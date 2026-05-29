@@ -1,0 +1,107 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Tenant {
+  id          Int         @id @default(autoincrement())
+  slug        String      @unique
+  companyName String      @map("company_name")
+  usuarios    Usuario[]
+  properties  Property[]
+  rooms       Room[]
+  inquilinos  Inquilino[]
+  payments    Payment[]
+  servicios   Servicio[]
+}
+
+model Usuario {
+  id        Int     @id @default(autoincrement())
+  email     String  @unique
+  password  String
+  firstName String
+  lastName  String?
+  role      String  // "PROPIETARIO" o "INQUILINO"
+  tenantId  Int
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Property {
+  id         Int         @id @default(autoincrement())
+  name       String
+  address    String
+  price      Float?      // Precio si se arrienda completa
+  tenantId   Int
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rooms      Room[]
+  inquilinos Inquilino[]
+  servicios  Servicio[]
+}
+
+model Room {
+  id         Int         @id @default(autoincrement())
+  roomNumber String
+  price      Float
+  status     String      // "Disponible", "Ocupado", "Mantenimiento"
+  propertyId Int
+  property   Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenantId   Int
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inquilinos Inquilino[]
+  payments   Payment[]
+  servicios  Servicio[]
+}
+
+model Inquilino {
+  id         Int       @id @default(autoincrement())
+  name       String
+  document   String
+  email      String
+  phone      String?
+  status     String    @default("ACTIVO") // "ACTIVO", "INACTIVO", "MOROSO"
+  propertyId Int?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  roomId     Int?
+  room       Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  tenantId   Int
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payments   Payment[]
+}
+
+model Servicio {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  cost        Float
+  tipo        String    // "INCLUIDO" o "ADICIONAL"
+  propertyId  Int?
+  property    Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomId      Int?
+  room        Room?     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  tenantId    Int
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id              Int       @id @default(autoincrement())
+  inquilinoId     Int       @map("inquilino_id_fk")
+  inquilino       Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
+  roomId          Int?
+  room            Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  amount          Float
+  amountPaid      Float     @default(0.0)
+  delayPenalty    Float     @default(0.0)
+  dueDate         DateTime
+  lastPaymentDate DateTime?
+  status          String    @default("PENDIENTE") // "PENDIENTE", "PAGADO", "PAGADO_PARCIAL", "VENCIDO", "CANCELADO"
+  paymentType     String    @default("ALQUILER") // "ALQUILER", "SERVICIO"
+  description     String?
+  receiptReference String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenantId        Int       @map("tenant_ref_id")
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}

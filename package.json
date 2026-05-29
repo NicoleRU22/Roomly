@@ -1,0 +1,10 @@
+{
+  "name": "roomly-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "backend:generate": "pnpm --filter backend prisma:generate",
+    "backend:migrate": "pnpm --filter backend prisma:migrate"
+  }
+}
