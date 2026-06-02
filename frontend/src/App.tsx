@@ -1,22 +1,22 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from './store/useAuthStore';
+import { useAuthStore } from './features/auth/store/useAuthStore';
 
 // Layouts
-import { AuthLayout } from './components/layout/AuthLayout';
-import { DashboardLayout } from './components/layout/DashboardLayout';
+import { AuthLayout } from './core/components/layout/AuthLayout';
+import { DashboardLayout } from './core/components/layout/DashboardLayout';
 
 // Vistas / Páginas
-import { Home } from './pages/Home';
-import { Login } from './pages/auth/Login';
-import { Register } from './pages/auth/Register';
-import { Dashboard } from './pages/dashboard/Dashboard';
-import { Propiedades } from './pages/propiedades/Propiedades';
-import { Rooms } from './pages/rooms/Rooms';
-import { Inquilinos } from './pages/inquilinos/Inquilinos';
-import { Servicios } from './pages/servicios/Servicios';
-import { Pagos } from './pages/pagos/Pagos';
-import { Contratos } from './pages/contratos/Contratos';
+import { Home } from './features/home/pages/Home';
+import { Login } from './features/auth/pages/Login';
+import { Register } from './features/auth/pages/Register';
+import { Dashboard } from './features/dashboard/pages/Dashboard';
+import { Propiedades } from './features/propiedades/pages/Propiedades';
+import { Rooms } from './features/propiedades/pages/Rooms';
+import { Inquilinos } from './features/inquilinos/pages/Inquilinos';
+import { Servicios } from './features/servicios/pages/Servicios';
+import { Pagos } from './features/pagos/pages/Pagos';
+import { Contratos } from './features/contratos/pages/Contratos';
 
 // Componente para Proteger Rutas
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {

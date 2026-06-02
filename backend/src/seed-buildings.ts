@@ -1,4 +1,4 @@
-import prisma from './prisma';
+import prisma from './core/db/prisma';
 
 async function main() {
   console.log('Iniciando limpieza y generación de datos de prueba...');
