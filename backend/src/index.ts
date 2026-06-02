@@ -18,7 +18,7 @@ app.use(helmet());
 
 // Configurar CORS seguro con lista blanca dinámica
 const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  ? process.env.CORS_ORIGIN.replace(/['"]/g, '').split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
 
 app.use(cors({
@@ -28,6 +28,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
       callback(null, true);
     } else {
+      console.warn(`[CORS Blocked] Origin "${origin}" is not allowed. Allowed origins:`, allowedOrigins);
       callback(new Error('No permitido por CORS'));
     }
   },
