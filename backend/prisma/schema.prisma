@@ -7,15 +7,17 @@ generator client {
 }
 
 model Tenant {
-  id          Int         @id @default(autoincrement())
-  slug        String      @unique
-  companyName String      @map("company_name")
+  id          Int                 @id @default(autoincrement())
+  slug        String              @unique
+  companyName String              @map("company_name")
   usuarios    Usuario[]
   properties  Property[]
   rooms       Room[]
   inquilinos  Inquilino[]
   payments    Payment[]
   servicios   Servicio[]
+  contratos   Contrato[]
+  tickets     MaintenanceTicket[]
 }
 
 model Usuario {
@@ -30,45 +32,50 @@ model Usuario {
 }
 
 model Property {
-  id         Int         @id @default(autoincrement())
+  id         Int                 @id @default(autoincrement())
   name       String
   address    String
-  price      Float?      // Precio si se arrienda completa
+  price      Float?              // Precio si se arrienda completa
   tenantId   Int
-  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rooms      Room[]
   inquilinos Inquilino[]
   servicios  Servicio[]
+  tickets    MaintenanceTicket[]
 }
 
 model Room {
-  id         Int         @id @default(autoincrement())
+  id         Int                 @id @default(autoincrement())
   roomNumber String
   price      Float
-  status     String      // "Disponible", "Ocupado", "Mantenimiento"
+  status     String              // "Disponible", "Ocupado", "Mantenimiento"
   propertyId Int
-  property   Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property   Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenantId   Int
-  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inquilinos Inquilino[]
   payments   Payment[]
   servicios  Servicio[]
+  contratos  Contrato[]
+  tickets    MaintenanceTicket[]
 }
 
 model Inquilino {
-  id         Int       @id @default(autoincrement())
+  id         Int                 @id @default(autoincrement())
   name       String
   document   String
   email      String
   phone      String?
-  status     String    @default("ACTIVO") // "ACTIVO", "INACTIVO", "MOROSO"
+  status     String              @default("ACTIVO") // "ACTIVO", "INACTIVO", "MOROSO"
   propertyId Int?
-  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  property   Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   roomId     Int?
-  room       Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  room       Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
   tenantId   Int
-  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments   Payment[]
+  contrato   Contrato?
+  tickets    MaintenanceTicket[]
 }
 
 model Servicio {
@@ -86,22 +93,64 @@ model Servicio {
 }
 
 model Payment {
-  id              Int       @id @default(autoincrement())
-  inquilinoId     Int       @map("inquilino_id_fk")
-  inquilino       Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
-  roomId          Int?
-  room            Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  amount          Float
-  amountPaid      Float     @default(0.0)
-  delayPenalty    Float     @default(0.0)
-  dueDate         DateTime
-  lastPaymentDate DateTime?
-  status          String    @default("PENDIENTE") // "PENDIENTE", "PAGADO", "PAGADO_PARCIAL", "VENCIDO", "CANCELADO"
-  paymentType     String    @default("ALQUILER") // "ALQUILER", "SERVICIO"
-  description     String?
+  id               Int       @id @default(autoincrement())
+  inquilinoId      Int       @map("inquilino_id_fk")
+  inquilino        Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
+  roomId           Int?
+  room             Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  amount           Float
+  amountPaid       Float     @default(0.0)
+  delayPenalty     Float     @default(0.0)
+  dueDate          DateTime
+  lastPaymentDate  DateTime?
+  status           String    @default("PENDIENTE") // "PENDIENTE", "PAGADO", "PAGADO_PARCIAL", "VENCIDO", "CANCELADO"
+  paymentType      String    @default("ALQUILER") // "ALQUILER", "SERVICIO"
+  description      String?
   receiptReference String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  tenantId        Int       @map("tenant_ref_id")
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receiptImageUrl  String?   // URL o ruta local al comprobante subido
+  receiptStatus    String    @default("APROBADO") // "PENDIENTE", "APROBADO", "RECHAZADO"
+  rejectionReason  String?   // Motivo de rechazo del comprobante
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  tenantId         Int       @map("tenant_ref_id")
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Contrato {
+  id            Int       @id @default(autoincrement())
+  tenantId      Int
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inquilinoId   Int       @unique
+  inquilino     Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
+  roomId        Int
+  room          Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  startDate     DateTime
+  endDate       DateTime
+  amount        Float
+  status        String    @default("PENDIENTE_FIRMA") // "PENDIENTE_FIRMA", "VIGENTE", "FINALIZADO"
+  signatureUrl  String?   // URL/Base64/Ruta de la imagen de firma manuscrita
+  acceptedTerms Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model MaintenanceTicket {
+  id          Int       @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inquilinoId Int
+  inquilino   Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
+  propertyId  Int
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  roomId      Int?
+  room        Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  title       String
+  description String
+  imageUrl    String?   // Foto de la avería
+  priority    String    @default("MEDIA") // "ALTA", "MEDIA", "BAJA"
+  status      String    @default("PENDIENTE") // "PENDIENTE", "EN_PROGRESO", "RESUELTO"
+  comments    String?   // Seguimiento / notas del propietario (Ej: "El plomero irá mañana")
+  cost        Float?    // Costo de reparación
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

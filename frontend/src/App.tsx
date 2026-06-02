@@ -17,6 +17,8 @@ import { Inquilinos } from './features/inquilinos/pages/Inquilinos';
 import { Servicios } from './features/servicios/pages/Servicios';
 import { Pagos } from './features/pagos/pages/Pagos';
 import { Contratos } from './features/contratos/pages/Contratos';
+import { Mantenimiento } from './features/mantenimiento/pages/Mantenimiento';
+import { Perfil } from './features/perfil/pages/Perfil';
 
 // Componente para Proteger Rutas
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -58,6 +60,8 @@ function App() {
           <Route path="servicios" element={<Servicios />} />
           <Route path="pagos" element={<Pagos />} />
           <Route path="contratos" element={<Contratos />} />
+          <Route path="mantenimiento" element={<Mantenimiento />} />
+          <Route path="perfil" element={<Perfil />} />
           
           {/* Redirección por defecto dentro del tenant */}
           <Route path="*" element={<Navigate to="dashboard" replace />} />

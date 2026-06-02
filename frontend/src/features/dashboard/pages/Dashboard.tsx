@@ -64,12 +64,17 @@ export const Dashboard: React.FC = () => {
   // Estados de Propietario (Admin)
   const [properties, setProperties] = useState<Property[]>([]);
   const [activeTenants, setActiveTenants] = useState(0);
-  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
+  const [monthlyRevenue, setMonthlyRevenue] = useState(0); // Recaudado
+  const [projectedRevenue, setProjectedRevenue] = useState(0); // Proyectado
+  const [occupancyRate, setOccupancyRate] = useState(0); // Ocupación Global
+  const [allPayments, setAllPayments] = useState<Payment[]>([]); // Pagos para alertas de mora
+  const [urgentTickets, setUrgentTickets] = useState<any[]>([]); // Incidencias pendientes urgentes
   const [deletePropertyId, setDeletePropertyId] = useState<number | null>(null);
 
   // Estados de Inquilino (Resident)
   const [inquilinoInfo, setInquilinoInfo] = useState<InquilinoInfo | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [pendingContract, setPendingContract] = useState<any | null>(null);
   const [selectedPaymentForReport, setSelectedPaymentForReport] = useState<Payment | null>(null);
   const [reportAmount, setReportAmount] = useState('');
   const [reportRef, setReportRef] = useState('');
@@ -85,39 +90,67 @@ export const Dashboard: React.FC = () => {
     setError(null);
     try {
       if (user?.role === 'INQUILINO') {
-        // Cargar datos del inquilino y sus pagos
-        const [meRes, payRes] = await Promise.all([
+        // Cargar datos del inquilino, sus pagos y contratos
+        const [meRes, payRes, contractRes] = await Promise.all([
           api.get('/inquilinos/me'),
-          api.get('/payments')
+          api.get('/payments'),
+          api.get('/contratos')
         ]);
         setInquilinoInfo(meRes.data);
         setPayments(payRes.data);
+        
+        // Buscar si hay algún contrato pendiente de firma
+        const pending = contractRes.data.find((c: any) => c.status === 'PENDIENTE_FIRMA');
+        setPendingContract(pending || null);
       } else {
-        // Cargar datos del propietario
-        const [propRes, inqRes] = await Promise.all([
+        // Cargar datos del propietario (propiedades, inquilinos, pagos, incidencias)
+        const [propRes, inqRes, payRes, ticketRes] = await Promise.all([
           api.get('/properties'),
-          api.get('/inquilinos')
+          api.get('/inquilinos'),
+          api.get('/payments'),
+          api.get('/mantenimiento')
         ]);
 
         const props = propRes.data;
         const inqs = inqRes.data;
+        const pays = payRes.data;
+        const ticketsList = ticketRes.data;
 
         // Calcular inquilinos activos
         const activeCount = inqs.filter((i: any) => i.status === 'ACTIVO').length;
 
-        // Calcular ingresos mensuales sumando el precio de cuartos ocupados
-        let revenue = 0;
+        // Calcular KPIs de Ocupación
+        let totalRooms = 0;
+        let occupiedRooms = 0;
+        let projected = 0;
+
         props.forEach((p: any) => {
           if (p.rooms) {
-            revenue += p.rooms
-              .filter((r: any) => r.status === 'Ocupado')
-              .reduce((sum: number, r: any) => sum + r.price, 0);
+            totalRooms += p.rooms.length;
+            p.rooms.forEach((r: any) => {
+              if (r.status === 'Ocupado') {
+                occupiedRooms++;
+                projected += r.price; // Ingreso proyectado por cuarto alquilado
+              }
+            });
           }
+        });
+
+        const globalOccupancy = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
+
+        // Calcular lo recaudado
+        let collected = 0;
+        pays.forEach((p: any) => {
+          collected += p.amountPaid;
         });
 
         setProperties(props);
         setActiveTenants(activeCount);
-        setMonthlyRevenue(revenue);
+        setMonthlyRevenue(collected);
+        setProjectedRevenue(projected);
+        setOccupancyRate(globalOccupancy);
+        setAllPayments(pays);
+        setUrgentTickets(ticketsList.filter((t: any) => t.status === 'PENDIENTE' && t.priority === 'ALTA'));
       }
     } catch (err: any) {
       console.error('Error fetching dashboard stats:', err);
@@ -202,6 +235,27 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
 
+        {/* Alerta de Contrato Pendiente */}
+        {pendingContract && (
+          <div className="bg-rose-50 border border-rose-250 p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-pulse">
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-rose-800 flex items-center">
+                <AlertCircle className="w-4 h-4 mr-2 shrink-0 text-rose-600" />
+                Tienes un contrato de arrendamiento pendiente de firma
+              </h4>
+              <p className="text-xs text-rose-600">
+                Para la Habitación <strong>{pendingContract.roomNumber}</strong> en el edificio <strong>{pendingContract.propertyName}</strong>. Por favor, revísalo y fírmalo para oficializar tu arriendo.
+              </p>
+            </div>
+            <Link
+              to={`/${tenant}/contratos`}
+              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl text-center shrink-0 transition-colors shadow-md shadow-rose-100"
+            >
+              Ver y Firmar Contrato
+            </Link>
+          </div>
+        )}
+
         {error && (
           <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
             {error}
@@ -224,7 +278,7 @@ export const Dashboard: React.FC = () => {
                 {inquilinoInfo?.propertyName || 'Sin edificio asignado'}
               </h3>
               <p className="text-xs text-slate-500 font-mono">
-                Habitación / Hab: {inquilinoInfo?.roomNumber || 'Por asignar'}
+                Habitación: {inquilinoInfo?.roomNumber || 'Por asignar'}
               </p>
             </div>
 
@@ -234,7 +288,7 @@ export const Dashboard: React.FC = () => {
                 <p className="font-extrabold text-slate-800">S/. 550.00</p>
               </div>
               <div className="space-y-1">
-                <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Tu Documento</span>
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Documento</span>
                 <p className="font-mono text-slate-600">{inquilinoInfo?.document}</p>
               </div>
             </div>
@@ -411,20 +465,42 @@ export const Dashboard: React.FC = () => {
   // ==========================================
   return (
     <div className="space-y-8">
-      {/* 3 TARJETAS DE MÉTRICAS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Métrica 1: Total de propiedades */}
+      {/* 4 TARJETAS DE MÉTRICAS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Métrica 1: Ocupación Global */}
         <div className="bg-white border border-slate-200 p-6 rounded-3xl flex items-center justify-between shadow-sm">
           <div className="space-y-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total de propiedades</p>
-            <h3 className="text-3xl font-extrabold text-slate-900">{properties.length}</h3>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ocupación Global</p>
+            <h3 className="text-3xl font-extrabold text-slate-900">{occupancyRate}%</h3>
           </div>
           <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center border border-purple-100 shadow-sm">
             <Building2 className="w-6 h-6" />
           </div>
         </div>
 
-        {/* Métrica 2: Inquilinos activos */}
+        {/* Métrica 2: Ingresos Recaudados */}
+        <div className="bg-white border border-slate-200 p-6 rounded-3xl flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ingresos Recaudados</p>
+            <h3 className="text-3xl font-extrabold text-slate-900">S/. {monthlyRevenue.toFixed(2)}</h3>
+          </div>
+          <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center border border-purple-100 shadow-sm">
+            <DollarSign className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Métrica 3: Meta Mensual (Proyectado) */}
+        <div className="bg-white border border-slate-200 p-6 rounded-3xl flex items-center justify-between shadow-sm">
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ingreso Proyectado</p>
+            <h3 className="text-3xl font-extrabold text-slate-900">S/. {projectedRevenue.toFixed(2)}</h3>
+          </div>
+          <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center border border-purple-100 shadow-sm">
+            <CreditCard className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Métrica 4: Inquilinos activos */}
         <div className="bg-white border border-slate-200 p-6 rounded-3xl flex items-center justify-between shadow-sm">
           <div className="space-y-1">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Inquilinos activos</p>
@@ -434,20 +510,65 @@ export const Dashboard: React.FC = () => {
             <Users className="w-6 h-6" />
           </div>
         </div>
-
-        {/* Métrica 3: Ingresos mensuales */}
-        <div className="bg-white border border-slate-200 p-6 rounded-3xl flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Ingresos mensuales</p>
-            <h3 className="text-3xl font-extrabold text-slate-900">
-              S/. {monthlyRevenue}
-            </h3>
-          </div>
-          <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center border border-purple-100 shadow-sm">
-            <DollarSign className="w-6 h-6" />
-          </div>
-        </div>
       </div>
+
+      {/* Alertas Operativas (Morosidad y Tickets Urgentes) */}
+      {(allPayments.filter(p => p.status === 'VENCIDO').length > 0 || urgentTickets.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Alertas de Morosidad */}
+          {allPayments.filter(p => p.status === 'VENCIDO').length > 0 && (
+            <div className="bg-rose-50/50 border border-rose-200 p-6 rounded-3xl space-y-4">
+              <h3 className="text-sm font-bold text-rose-800 flex items-center">
+                <AlertCircle className="w-4.5 h-4.5 mr-2 text-rose-600 shrink-0" />
+                Alertas de Morosidad ({allPayments.filter(p => p.status === 'VENCIDO').length})
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {allPayments.filter(p => p.status === 'VENCIDO').map(p => {
+                  const daysLate = Math.ceil(Math.abs(new Date().getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24));
+                  return (
+                    <div key={p.id} className="bg-white border border-rose-100 p-3 rounded-xl flex justify-between items-center text-xs shadow-sm">
+                      <div>
+                        <p className="font-bold text-slate-800">{p.inquilinoName}</p>
+                        <p className="text-[10px] text-rose-600 font-medium mt-0.5">
+                          Mora acumulada: S/. {p.delayPenalty.toFixed(2)} ({daysLate} días de retraso)
+                        </p>
+                      </div>
+                      <span className="font-extrabold text-slate-700">S/. {(p.amount + p.delayPenalty).toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Tickets de Mantenimiento Pendientes Urgentes */}
+          {urgentTickets.length > 0 && (
+            <div className="bg-amber-50/50 border border-amber-200 p-6 rounded-3xl space-y-4">
+              <h3 className="text-sm font-bold text-amber-800 flex items-center">
+                <AlertCircle className="w-4.5 h-4.5 mr-2 text-amber-600 shrink-0" />
+                Incidencias Pendientes Urgentes ({urgentTickets.length})
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {urgentTickets.map(t => (
+                  <div key={t.id} className="bg-white border border-amber-100 p-3 rounded-xl flex justify-between items-center text-xs shadow-sm">
+                    <div>
+                      <p className="font-bold text-slate-800">{t.title}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{t.propertyName} - Hab {t.roomNumber || 'General'}</p>
+                    </div>
+                    <Link
+                      to={`/${tenant}/mantenimiento`}
+                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded-lg transition-colors shrink-0 shadow-sm shadow-amber-50"
+                    >
+                      Ver Ticket
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* SECCIÓN TUS PROPIEDADES */}
       <div className="space-y-6">

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma, { runInTransaction } from '../../core/db/prisma';
+import { sendSimulatedCredentialsEmail } from '../../core/utils/email';
 
 export const getAllInquilinos = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -39,7 +40,8 @@ export const getAllInquilinos = async (req: Request, res: Response): Promise<voi
       propertyId: i.propertyId || undefined,
       propertyName: i.property?.name || undefined,
       roomId: i.roomId || undefined,
-      roomNumber: i.room?.roomNumber || undefined
+      roomNumber: i.room?.roomNumber || undefined,
+      roomPrice: i.room?.price || undefined
     }));
 
     res.json(dtos);
@@ -111,6 +113,9 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
   }
 
   try {
+    const plainPass = password && password.length >= 6 ? password : '123456';
+    const hashedPassword = await bcrypt.hash(plainPass, 10);
+
     // Iniciar transacción para crear inquilino y usuario a la vez
     const result = await runInTransaction(async (tx: any) => {
       // 1. Validar que la propiedad pertenezca al tenant si se envía
@@ -120,12 +125,14 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
         if (prop) pId = prop.id;
       }
 
-      // 2. Validar y actualizar el estado de la habitación si se envía
+      // 2. Validar y obtener la habitación si se envía
       let rId: number | null = null;
+      let roomObj: any = null;
       if (roomId) {
         const room = await tx.room.findFirst({ where: { id: parseInt(roomId), tenantId } });
         if (room) {
           rId = room.id;
+          roomObj = room;
           await tx.room.update({
             where: { id: room.id },
             data: { status: 'Ocupado' }
@@ -148,11 +155,29 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
         include: { property: true, room: true }
       });
 
-      // 4. Crear Usuario para login si no existe
+      // 4. Crear Contrato Borrador si se asignó un cuarto
+      if (rId && roomObj) {
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setFullYear(startDate.getFullYear() + 1); // 1 año por defecto
+        
+        await tx.contrato.create({
+          data: {
+            tenantId,
+            inquilinoId: inquilino.id,
+            roomId: rId,
+            startDate,
+            endDate,
+            amount: roomObj.price,
+            status: 'PENDIENTE_FIRMA',
+            acceptedTerms: false
+          }
+        });
+      }
+
+      // 5. Crear Usuario para login si no existe
       const existingUser = await tx.usuario.findUnique({ where: { email } });
       if (!existingUser) {
-        const pass = password && password.length >= 6 ? password : '123456';
-        const hashedPassword = await bcrypt.hash(pass, 10);
         await tx.usuario.create({
           data: {
             email,
@@ -166,6 +191,10 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
 
       return inquilino;
     });
+
+    // Enviar correo simulado de credenciales
+    const tenantRecord = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    sendSimulatedCredentialsEmail(email, name, plainPass, tenantRecord?.slug || '');
 
     res.status(201).json({
       id: result.id,

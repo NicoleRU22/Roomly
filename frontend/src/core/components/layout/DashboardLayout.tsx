@@ -14,7 +14,8 @@ import {
   FileText,
   Moon,
   Sun,
-  Settings
+  Settings,
+  Wrench
 } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
@@ -38,6 +39,7 @@ export const DashboardLayout: React.FC = () => {
     ] : []),
     { label: 'Pagos', path: `/${tenant?.slug}/pagos`, icon: <DollarSign className="w-5 h-5" /> },
     { label: 'Contratos', path: `/${tenant?.slug}/contratos`, icon: <FileText className="w-5 h-5" /> },
+    { label: 'Mantenimiento', path: `/${tenant?.slug}/mantenimiento`, icon: <Wrench className="w-5 h-5" /> },
   ];
 
   const currentLabel = navItems.find(item => location.pathname.startsWith(item.path))?.label || 'Panel de control';

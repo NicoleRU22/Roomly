@@ -2,11 +2,14 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import path from 'path';
 import authRoutes from './features/auth/auth.routes';
 import propertyRoutes from './features/propiedades/property.routes';
 import inquilinoRoutes from './features/inquilinos/inquilino.routes';
 import paymentRoutes from './features/pagos/payment.routes';
 import servicioRoutes from './features/servicios/servicio.routes';
+import contractRoutes from './features/contratos/contract.routes';
+import maintenanceRoutes from './features/mantenimiento/maintenance.routes';
 
 dotenv.config();
 
@@ -38,6 +41,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logger simple para debug
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -55,6 +59,8 @@ app.use('/api', propertyRoutes);
 app.use('/api', inquilinoRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api', servicioRoutes);
+app.use('/api', contractRoutes);
+app.use('/api', maintenanceRoutes);
 
 // Ruta de Salud/Prueba
 app.get('/health', (req: Request, res: Response) => {
@@ -64,3 +70,5 @@ app.get('/health', (req: Request, res: Response) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Roomly API iniciado en http://localhost:${PORT}`);
 });
+
+// Trigger reload for Prisma client update

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
+import { saveBase64Image } from '../../core/utils/upload';
 
 // Helper para calcular la mora
 const calculateDelay = (dueDateStr: Date | string): number => {
@@ -14,9 +15,9 @@ const calculateDelay = (dueDateStr: Date | string): number => {
     const diffTime = Math.abs(today.getTime() - due.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    // Penalización: después de 5 días de gracia, $5.0 por cada día adicional tarde.
-    if (diffDays > 5) {
-      return (diffDays - 5) * 5.0;
+    // Penalización: a partir del 5to día, 5 soles de mora por cada día que pase
+    if (diffDays >= 5) {
+      return diffDays * 5.0;
     }
   }
   return 0.0;
@@ -96,6 +97,9 @@ export const getAllPayments = async (req: Request, res: Response): Promise<void>
       paymentType: p.paymentType,
       description: p.description || undefined,
       receiptReference: p.receiptReference || undefined,
+      receiptImageUrl: p.receiptImageUrl || undefined,
+      receiptStatus: p.receiptStatus,
+      rejectionReason: p.rejectionReason || undefined,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt
     })));
@@ -170,12 +174,7 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
 export const recordPayment = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
   const { id } = req.params;
-  const { amountToAdd, receiptReference } = req.body;
-
-  if (!amountToAdd || parseFloat(amountToAdd) <= 0) {
-    res.status(400).json({ error: 'El monto a registrar debe ser un número positivo.' });
-    return;
-  }
+  const { amountToAdd, receiptReference, receiptImage } = req.body;
 
   try {
     const paymentId = parseInt(id as string);
@@ -188,7 +187,8 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    if (req.userRole === 'INQUILINO') {
+    const isTenant = req.userRole === 'INQUILINO';
+    if (isTenant) {
       const user = await prisma.usuario.findUnique({ where: { id: req.userId! } });
       if (user) {
         const inquilino = await prisma.inquilino.findFirst({
@@ -204,15 +204,37 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    const toAdd = parseFloat(amountToAdd);
+    // Si el inquilino sube una imagen de comprobante (Yape/Transferencia)
+    if (isTenant && receiptImage) {
+      const imageUrl = saveBase64Image(receiptImage, 'receipts');
+      
+      const updated = await prisma.payment.update({
+        where: { id: paymentId },
+        data: {
+          receiptImageUrl: imageUrl,
+          receiptStatus: 'PENDIENTE',
+          receiptReference: receiptReference || existing.receiptReference
+        }
+      });
+      res.json(updated);
+      return;
+    }
+
+    // Registro de pago por el Propietario (o efectivo directo sin imagen)
+    const toAdd = parseFloat(amountToAdd || '0');
+    if (toAdd <= 0) {
+      res.status(400).json({ error: 'El monto a registrar debe ser un número positivo.' });
+      return;
+    }
+
     const newAmountPaid = existing.amountPaid + toAdd;
     let newStatus = existing.status;
     let newPenalty = existing.delayPenalty;
 
     // Si ya completó el pago total
-    if (newAmountPaid >= existing.amount) {
+    if (newAmountPaid >= (existing.amount + existing.delayPenalty)) {
       newStatus = 'PAGADO';
-      newPenalty = 0.0; // Perdonar o anular mora restante al pagar todo
+      newPenalty = 0.0; // Anular mora
     } else {
       newStatus = 'PAGADO_PARCIAL';
     }
@@ -224,7 +246,8 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
         delayPenalty: newPenalty,
         status: newStatus,
         lastPaymentDate: new Date(),
-        receiptReference: receiptReference || existing.receiptReference
+        receiptReference: receiptReference || existing.receiptReference,
+        receiptStatus: 'APROBADO'
       }
     });
 
@@ -233,6 +256,92 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
     console.error('Error en recordPayment:', error);
     res.status(500).json({ error: 'Error al registrar el cobro.' });
   }
+};
+
+export const approvePayment = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+  const { id } = req.params;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. Solo propietarios pueden validar comprobantes.' });
+    return;
+  }
+
+  try {
+    const paymentId = parseInt(id as string);
+    const existing = await prisma.payment.findFirst({
+      where: { id: paymentId, tenantId }
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: 'Pago no encontrado o sin permisos.' });
+      return;
+    }
+
+    // Al aprobar, se considera cancelado el saldo total (monto + mora actual)
+    const totalToPay = existing.amount + existing.delayPenalty;
+
+    const updated = await prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        amountPaid: totalToPay,
+        status: 'PAGADO',
+        receiptStatus: 'APROBADO',
+        lastPaymentDate: new Date(),
+        rejectionReason: null
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error en approvePayment:', error);
+    res.status(500).json({ error: 'Error al aprobar el pago.' });
+  }
+};
+
+export const rejectPayment = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. Solo propietarios pueden validar comprobantes.' });
+    return;
+  }
+
+  try {
+    const paymentId = parseInt(id as string);
+    const existing = await prisma.payment.findFirst({
+      where: { id: paymentId, tenantId }
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: 'Pago no encontrado o sin permisos.' });
+      return;
+    }
+
+    const updated = await prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        receiptStatus: 'RECHAZADO',
+        rejectionReason: reason || 'Comprobante inválido o ilegible.'
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error en rejectPayment:', error);
+    res.status(500).json({ error: 'Error al rechazar el pago.' });
+  }
+};
+
+export const exportPaymentsReport = async (req: Request, res: Response): Promise<void> => {
+  // Retornar un simple resumen para emular la descarga de reporte
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=reporte-ingresos.csv');
+  res.send('ID,Inquilino,Concepto,Monto,Mora,Pagado,Estado,Fecha Vencimiento\n');
 };
 
 export const deletePayment = async (req: Request, res: Response): Promise<void> => {
