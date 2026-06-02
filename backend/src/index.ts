@@ -15,6 +15,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '10mb';
 
 // Registrar cabeceras de seguridad con Helmet
 app.use(helmet());
@@ -40,7 +41,8 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logger simple para debug
@@ -65,6 +67,30 @@ app.use('/api', maintenanceRoutes);
 // Ruta de Salud/Prueba
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Roomly API running successfully' });
+});
+
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    res.status(413).json({
+      error: 'La imagen adjunta es demasiado grande. Sube una foto menor a 6 MB.'
+    });
+    return;
+  }
+
+  if (err?.message === 'No permitido por CORS') {
+    res.status(403).json({
+      error: 'Origen no permitido por CORS. Revisa CORS_ORIGIN en el backend.'
+    });
+    return;
+  }
+
+  if (err?.type === 'entity.parse.failed') {
+    res.status(400).json({ error: 'El cuerpo de la solicitud no es un JSON valido.' });
+    return;
+  }
+
+  console.error('Error no controlado:', err);
+  res.status(500).json({ error: 'Error interno del servidor.' });
 });
 
 app.listen(PORT, () => {

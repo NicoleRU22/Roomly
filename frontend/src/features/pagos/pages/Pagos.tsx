@@ -3,6 +3,8 @@ import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { Pagination } from '../../../core/components/ui/Pagination';
+import * as XLSX from 'xlsx';
 
 interface Payment {
   id: number;
@@ -38,6 +40,8 @@ interface Servicio {
   cost: number;
   tipo: string;
 }
+
+const PAGE_SIZE = 8;
 
 export const Pagos: React.FC = () => {
   const { user } = useAuthStore();
@@ -92,6 +96,9 @@ export const Pagos: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [deletePaymentId, setDeletePaymentId] = useState<number | null>(null);
+  const [tenantPaymentsPage, setTenantPaymentsPage] = useState(1);
+  const [ownerPaymentsPage, setOwnerPaymentsPage] = useState(1);
+  const [debtsPage, setDebtsPage] = useState(1);
 
   const getApiUrl = () => {
     return import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -412,34 +419,27 @@ export const Pagos: React.FC = () => {
     printWindow.document.close();
   };
 
-  // Exportar reporte de pagos como archivo CSV
+  // Exportar reporte de pagos como archivo Excel
   const handleExportPayments = () => {
-    let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'ID,Inquilino,Habitacion,Concepto,Monto Base,Mora,Pagado,Vencimiento,Fecha Pago,Estado\n';
-    
-    payments.forEach(p => {
-      const row = [
-        p.id,
-        `"${p.inquilinoName}"`,
-        `"${p.roomNumber || 'N/A'}"`,
-        p.paymentType,
-        p.amount,
-        p.delayPenalty,
-        p.amountPaid,
-        p.dueDate,
-        p.status === 'PAGADO' ? getFechaPago(p) : 'N/A',
-        p.status
-      ].join(',');
-      csvContent += row + '\n';
-    });
+    const rows = payments.map(p => ({
+      ID: p.id,
+      Inquilino: p.inquilinoName,
+      Habitacion: p.roomNumber || 'N/A',
+      Concepto: p.paymentType,
+      Descripcion: p.description || '',
+      'Monto Base': p.amount,
+      Mora: p.delayPenalty,
+      Pagado: p.amountPaid,
+      Vencimiento: formatDate(p.dueDate),
+      'Fecha Pago': p.status === 'PAGADO' ? getFechaPago(p) : 'N/A',
+      Estado: p.status,
+      'Estado Comprobante': p.receiptStatus || ''
+    }));
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `reporte-pagos-roomly-${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pagos');
+    XLSX.writeFile(workbook, `reporte-pagos-roomly-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Agrupamiento por inquilino para deudas
@@ -511,6 +511,26 @@ export const Pagos: React.FC = () => {
   const tenantTotalPenalty = myPendingPayments.reduce((sum, p) => sum + p.delayPenalty, 0);
 
   const pendingValidationsCount = payments.filter(p => p.receiptStatus === 'PENDIENTE' && p.receiptImageUrl).length;
+  const tenantDebts = getTenantDebts();
+
+  const tenantPaymentsTotalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
+  const ownerPaymentsTotalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
+  const debtsTotalPages = Math.max(1, Math.ceil(tenantDebts.length / PAGE_SIZE));
+
+  const paginatedTenantPayments = payments.slice((tenantPaymentsPage - 1) * PAGE_SIZE, tenantPaymentsPage * PAGE_SIZE);
+  const paginatedOwnerPayments = payments.slice((ownerPaymentsPage - 1) * PAGE_SIZE, ownerPaymentsPage * PAGE_SIZE);
+  const paginatedTenantDebts = tenantDebts.slice((debtsPage - 1) * PAGE_SIZE, debtsPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (tenantPaymentsPage > tenantPaymentsTotalPages) setTenantPaymentsPage(tenantPaymentsTotalPages);
+    if (ownerPaymentsPage > ownerPaymentsTotalPages) setOwnerPaymentsPage(ownerPaymentsTotalPages);
+    if (debtsPage > debtsTotalPages) setDebtsPage(debtsTotalPages);
+  }, [tenantPaymentsPage, tenantPaymentsTotalPages, ownerPaymentsPage, ownerPaymentsTotalPages, debtsPage, debtsTotalPages]);
+
+  useEffect(() => {
+    setOwnerPaymentsPage(1);
+    setDebtsPage(1);
+  }, [activeTab]);
 
   if (loading && payments.length === 0) {
     return (
@@ -598,7 +618,7 @@ export const Pagos: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  payments.map((pay) => {
+                  paginatedTenantPayments.map((pay) => {
                     let statusLabel = 'Pendiente';
                     if (pay.status === 'PAGADO') statusLabel = 'Pagado';
                     else if (pay.status === 'VENCIDO') statusLabel = 'Vencido';
@@ -697,6 +717,13 @@ export const Pagos: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={tenantPaymentsPage}
+            totalItems={payments.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setTenantPaymentsPage}
+            itemLabel="recibos"
+          />
         </div>
 
         {/* MODAL INQUILINO: UPLOAD COMPROBANTE */}
@@ -945,7 +972,7 @@ export const Pagos: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  payments.map((pay) => {
+                  paginatedOwnerPayments.map((pay) => {
                     let statusClass = 'text-slate-700 font-bold';
                     let statusText = 'Pendiente';
                     if (pay.status === 'PAGADO') {
@@ -1050,6 +1077,13 @@ export const Pagos: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={ownerPaymentsPage}
+            totalItems={payments.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setOwnerPaymentsPage}
+            itemLabel="recibos"
+          />
         </div>
       )}
 
@@ -1152,14 +1186,14 @@ export const Pagos: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-slate-700 bg-white">
-                {getTenantDebts().length === 0 ? (
+                {tenantDebts.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="text-center py-12 text-slate-400">
                       No hay inquilinos registrados.
                     </td>
                   </tr>
                 ) : (
-                  getTenantDebts().map((inqDebt) => {
+                  paginatedTenantDebts.map((inqDebt) => {
                     let badge = (
                       <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-150 rounded-lg text-xs font-bold">
                         PAGOS AL DÍA
@@ -1203,6 +1237,13 @@ export const Pagos: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={debtsPage}
+            totalItems={tenantDebts.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setDebtsPage}
+            itemLabel="inquilinos"
+          />
         </div>
       )}
 

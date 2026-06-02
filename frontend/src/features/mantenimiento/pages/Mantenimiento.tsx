@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { Plus, CheckCircle, AlertTriangle, Clock, Hammer, DollarSign, Image as ImageIcon } from 'lucide-react';
+import { Pagination } from '../../../core/components/ui/Pagination';
 
 interface Ticket {
   id: number;
@@ -20,11 +21,23 @@ interface Ticket {
   createdAt: string;
 }
 
+const PAGE_SIZE = 8;
+const MAX_IMAGE_SIZE_BYTES = 6 * 1024 * 1024;
+
+const getRequestErrorMessage = (err: any, fallback: string) => {
+  if (err?.response?.data?.error) return err.response.data.error;
+  if (typeof err?.response?.data === 'string') return err.response.data;
+  if (err?.response?.status === 413) return 'La imagen adjunta es demasiado grande. Sube una foto menor a 6 MB.';
+  if (err?.code === 'ERR_NETWORK') return 'No se pudo conectar con la API. Revisa que el backend este activo y que VITE_API_URL/CORS_ORIGIN apunten al dominio correcto.';
+  return fallback;
+};
+
 export const Mantenimiento: React.FC = () => {
   const { user } = useAuthStore();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Datos de inquilino para auto-llenar propiedades
   const [inquilinoInfo, setInquilinoInfo] = useState<any>(null);
@@ -36,6 +49,8 @@ export const Mantenimiento: React.FC = () => {
   const [priority, setPriority] = useState('MEDIA');
   const [selectedFileBase64, setSelectedFileBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Estados del modal de Propietario (Gestión)
   const [showManageModal, setShowManageModal] = useState(false);
@@ -72,6 +87,27 @@ export const Mantenimiento: React.FC = () => {
   // Leer foto y convertir a Base64
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setFormError(null);
+
+    if (!file) {
+      setSelectedFileBase64(null);
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setSelectedFileBase64(null);
+      e.target.value = '';
+      setFormError('Selecciona un archivo de imagen valido.');
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setSelectedFileBase64(null);
+      e.target.value = '';
+      setFormError('La imagen es demasiado grande. Sube una foto menor a 6 MB.');
+      return;
+    }
+
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -83,13 +119,24 @@ export const Mantenimiento: React.FC = () => {
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !description || !inquilinoInfo?.propertyId) return;
+    setFormError(null);
+    setSuccessMessage(null);
+
+    if (!title.trim() || !description.trim()) {
+      setFormError('Completa el titulo y la descripcion del problema.');
+      return;
+    }
+
+    if (!inquilinoInfo?.propertyId) {
+      setFormError('No se encontro una propiedad asociada a tu usuario inquilino.');
+      return;
+    }
 
     setSubmitting(true);
     try {
       await api.post('/mantenimiento', {
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         priority,
         propertyId: inquilinoInfo.propertyId,
         roomId: inquilinoInfo.roomId,
@@ -100,9 +147,12 @@ export const Mantenimiento: React.FC = () => {
       setDescription('');
       setPriority('MEDIA');
       setSelectedFileBase64(null);
-      fetchTickets();
+      setSuccessMessage('Reporte enviado correctamente.');
+      await fetchTickets();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Error al reportar el problema.');
+      const message = getRequestErrorMessage(err, 'Error al reportar el problema.');
+      setFormError(message);
+      alert(message);
     } finally {
       setSubmitting(false);
     }
@@ -171,6 +221,15 @@ export const Mantenimiento: React.FC = () => {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(tickets.length / PAGE_SIZE));
+  const paginatedTickets = tickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   if (loading && tickets.length === 0) {
     return (
       <div className="flex items-center justify-center h-[50vh] text-slate-500">
@@ -192,7 +251,11 @@ export const Mantenimiento: React.FC = () => {
 
         {user?.role === 'INQUILINO' && (
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              setFormError(null);
+              setSuccessMessage(null);
+              setShowAddModal(true);
+            }}
             disabled={!inquilinoInfo?.propertyId}
             className="flex items-center py-2.5 px-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-100"
           >
@@ -205,6 +268,12 @@ export const Mantenimiento: React.FC = () => {
       {error && (
         <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
           {error}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700">
+          {successMessage}
         </div>
       )}
 
@@ -230,7 +299,7 @@ export const Mantenimiento: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {tickets.map((ticket) => (
+                  {paginatedTickets.map((ticket) => (
                     <tr key={ticket.id} className="hover:bg-slate-50/50">
                       <td className="px-6 py-4 space-y-1">
                         <div className="flex items-center space-x-2">
@@ -303,6 +372,13 @@ export const Mantenimiento: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              currentPage={currentPage}
+              totalItems={tickets.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setCurrentPage}
+              itemLabel="tickets"
+            />
           </div>
         )}
       </div>
@@ -316,6 +392,12 @@ export const Mantenimiento: React.FC = () => {
               <h3 className="text-md font-extrabold text-slate-900 leading-tight">Reportar Avería</h3>
               <p className="text-xs text-slate-400">Describe el problema técnico para programar su reparación.</p>
             </div>
+
+            {formError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
+                {formError}
+              </div>
+            )}
 
             <form onSubmit={handleCreateTicket} className="space-y-4">
               <div>

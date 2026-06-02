@@ -16,12 +16,14 @@ import {
   Upload
 } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { Pagination } from '../../../core/components/ui/Pagination';
 
 interface Property {
   id: number;
   name: string;
   address: string;
   price: number | null;
+  services?: string;
   rooms?: any[];
   inquilinos?: any[];
 }
@@ -56,6 +58,15 @@ interface Payment {
   receiptReference?: string;
 }
 
+const PAGE_SIZE = 8;
+const SERVICE_LABELS: Record<string, string> = {
+  wifi: 'WiFi',
+  WiFi: 'WiFi',
+  Estacionamiento: 'Estacionamiento',
+  Gimnasio: 'Gimnasio',
+  Piscina: 'Piscina'
+};
+
 export const Dashboard: React.FC = () => {
   const { tenant } = useParams();
   const navigate = useNavigate();
@@ -80,6 +91,7 @@ export const Dashboard: React.FC = () => {
   const [reportRef, setReportRef] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [paymentsPage, setPaymentsPage] = useState(1);
 
   // Estados generales
   const [loading, setLoading] = useState(true);
@@ -205,6 +217,15 @@ export const Dashboard: React.FC = () => {
       setReporting(false);
     }
   };
+
+  const totalPaymentPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
+  const paginatedPayments = payments.slice((paymentsPage - 1) * PAGE_SIZE, paymentsPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (paymentsPage > totalPaymentPages) {
+      setPaymentsPage(totalPaymentPages);
+    }
+  }, [paymentsPage, totalPaymentPages]);
 
   if (loading) {
     return (
@@ -350,7 +371,7 @@ export const Dashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
-                    {payments.map((pay) => {
+                    {paginatedPayments.map((pay) => {
                       const pending = pay.amount + pay.delayPenalty - pay.amountPaid;
                       return (
                         <tr key={pay.id} className="hover:bg-slate-50/50">
@@ -395,6 +416,13 @@ export const Dashboard: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                currentPage={paymentsPage}
+                totalItems={payments.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPaymentsPage}
+                itemLabel="recibos"
+              />
             </div>
           )}
         </div>
@@ -650,10 +678,15 @@ export const Dashboard: React.FC = () => {
                   <div className="space-y-1.5">
                     <p className="text-xs font-bold text-slate-700">Servicios</p>
                     <div className="flex flex-wrap gap-1.5">
-                      <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">wifi</span>
-                      <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">Estacionamiento</span>
-                      <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">Gimnasio</span>
-                      <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">Piscina</span>
+                      {prop.services && prop.services.trim() !== '' ? (
+                        prop.services.split(',').map((service) => service.trim()).filter(Boolean).map((service) => (
+                          <span key={service} className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">
+                            {SERVICE_LABELS[service] || service}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium italic">Sin servicios asignados</span>
+                      )}
                     </div>
                   </div>
 

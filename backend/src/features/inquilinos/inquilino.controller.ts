@@ -112,15 +112,21 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
     return;
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
+
   try {
-    const plainPass = password && password.length >= 6 ? password : '123456';
+    let plainPass = password;
+    if (!plainPass || plainPass.length < 6) {
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      plainPass = `Roomly-${rand}`;
+    }
     const hashedPassword = await bcrypt.hash(plainPass, 10);
 
     // Iniciar transacción para crear inquilino y usuario a la vez
     const result = await runInTransaction(async (tx: any) => {
       // 1. Validar que la propiedad pertenezca al tenant si se envía
       let pId: number | null = null;
-      if (propertyId) {
+      if (propertyId && !isNaN(parseInt(propertyId))) {
         const prop = await tx.property.findFirst({ where: { id: parseInt(propertyId), tenantId } });
         if (prop) pId = prop.id;
       }
@@ -128,9 +134,12 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
       // 2. Validar y obtener la habitación si se envía
       let rId: number | null = null;
       let roomObj: any = null;
-      if (roomId) {
+      if (roomId && !isNaN(parseInt(roomId))) {
         const room = await tx.room.findFirst({ where: { id: parseInt(roomId), tenantId } });
         if (room) {
+          if (room.status !== 'Disponible') {
+            throw new Error('La habitación seleccionada no está disponible.');
+          }
           rId = room.id;
           roomObj = room;
           await tx.room.update({
@@ -145,7 +154,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
         data: {
           name,
           document,
-          email,
+          email: normalizedEmail,
           phone,
           status: status || 'ACTIVO',
           propertyId: pId,
@@ -160,6 +169,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
         const startDate = new Date();
         const endDate = new Date();
         endDate.setFullYear(startDate.getFullYear() + 1); // 1 año por defecto
+        const tenantRecordForContract = await tx.tenant.findUnique({ where: { id: tenantId } });
         
         await tx.contrato.create({
           data: {
@@ -170,17 +180,18 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
             endDate,
             amount: roomObj.price,
             status: 'PENDIENTE_FIRMA',
+            landlordName: tenantRecordForContract?.companyName || null,
             acceptedTerms: false
           }
         });
       }
 
       // 5. Crear Usuario para login si no existe
-      const existingUser = await tx.usuario.findUnique({ where: { email } });
+      const existingUser = await tx.usuario.findUnique({ where: { email: normalizedEmail } });
       if (!existingUser) {
         await tx.usuario.create({
           data: {
-            email,
+            email: normalizedEmail,
             password: hashedPassword,
             firstName: name,
             role: 'INQUILINO',
@@ -194,7 +205,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
 
     // Enviar correo simulado de credenciales
     const tenantRecord = await prisma.tenant.findUnique({ where: { id: tenantId } });
-    sendSimulatedCredentialsEmail(email, name, plainPass, tenantRecord?.slug || '');
+    sendSimulatedCredentialsEmail(normalizedEmail, name, plainPass, tenantRecord?.slug || '');
 
     res.status(201).json({
       id: result.id,
@@ -206,11 +217,16 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
       propertyId: result.propertyId || undefined,
       propertyName: result.property?.name || undefined,
       roomId: result.roomId || undefined,
-      roomNumber: result.room?.roomNumber || undefined
+      roomNumber: result.room?.roomNumber || undefined,
+      tempPassword: plainPass
     });
 
   } catch (error) {
     console.error('Error en createInquilino:', error);
+    if (error instanceof Error && error.message.includes('no está disponible')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     res.status(500).json({ error: 'Error al registrar el inquilino.' });
   }
 };
@@ -226,6 +242,8 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
 
   const { id } = req.params;
   const { name, document, email, phone, status, propertyId, roomId, password } = req.body;
+
+  const normalizedEmail = email ? email.trim().toLowerCase() : undefined;
 
   try {
     const inquilinoId = parseInt(id as string);
@@ -244,16 +262,19 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
     const result = await runInTransaction(async (tx: any) => {
       // 1. Validar propiedad
       let pId: number | null = null;
-      if (propertyId) {
+      if (propertyId && !isNaN(parseInt(propertyId))) {
         const prop = await tx.property.findFirst({ where: { id: parseInt(propertyId), tenantId } });
         if (prop) pId = prop.id;
       }
 
       // 2. Controlar cambios de habitación
       let rId: number | null = null;
-      if (roomId) {
+      if (roomId && !isNaN(parseInt(roomId))) {
         const newRoom = await tx.room.findFirst({ where: { id: parseInt(roomId), tenantId } });
         if (newRoom) {
+          if (newRoom.id !== existing.roomId && newRoom.status !== 'Disponible') {
+            throw new Error('La habitación seleccionada no está disponible.');
+          }
           rId = newRoom.id;
           // Marcar como ocupado
           await tx.room.update({
@@ -277,7 +298,7 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
         data: {
           name,
           document,
-          email,
+          email: normalizedEmail,
           phone,
           status,
           propertyId: pId,
@@ -290,7 +311,7 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
       const existingUser = await tx.usuario.findUnique({ where: { email: oldEmail } });
       if (existingUser) {
         const dataToUpdate: any = {
-          email,
+          email: normalizedEmail,
           firstName: name
         };
         if (password && password.length >= 6) {
@@ -320,6 +341,10 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
 
   } catch (error) {
     console.error('Error en updateInquilino:', error);
+    if (error instanceof Error && error.message.includes('no está disponible')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     res.status(500).json({ error: 'Error al actualizar el inquilino.' });
   }
 };

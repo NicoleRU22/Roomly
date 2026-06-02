@@ -55,7 +55,7 @@ export const createProperty = async (req: Request, res: Response): Promise<void>
     return;
   }
 
-  const { name, address, price } = req.body;
+  const { name, address, price, services } = req.body;
 
   if (!name || !address) {
     res.status(400).json({ error: 'El nombre y la dirección son requeridos.' });
@@ -68,6 +68,7 @@ export const createProperty = async (req: Request, res: Response): Promise<void>
         name,
         address,
         price: price ? parseFloat(price) : null,
+        services: services || '',
         tenantId
       }
     });
@@ -89,7 +90,7 @@ export const updateProperty = async (req: Request, res: Response): Promise<void>
   }
 
   const { id } = req.params;
-  const { name, address, price } = req.body;
+  const { name, address, price, services } = req.body;
 
   try {
     const propertyId = parseInt(id as string);
@@ -107,7 +108,8 @@ export const updateProperty = async (req: Request, res: Response): Promise<void>
       data: {
         name,
         address,
-        price: price !== undefined ? (price ? parseFloat(price) : null) : undefined
+        price: price !== undefined ? (price ? parseFloat(price) : null) : undefined,
+        services: services !== undefined ? services : undefined
       }
     });
 

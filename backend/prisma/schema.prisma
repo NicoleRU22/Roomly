@@ -36,6 +36,7 @@ model Property {
   name       String
   address    String
   price      Float?              // Precio si se arrienda completa
+  services   String?             @default("")
   tenantId   Int
   tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rooms      Room[]
@@ -74,7 +75,7 @@ model Inquilino {
   tenantId   Int
   tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payments   Payment[]
-  contrato   Contrato?
+  contratos  Contrato[]
   tickets    MaintenanceTicket[]
 }
 
@@ -120,7 +121,7 @@ model Contrato {
   id            Int       @id @default(autoincrement())
   tenantId      Int
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  inquilinoId   Int       @unique
+  inquilinoId   Int
   inquilino     Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
   roomId        Int
   room          Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
@@ -128,6 +129,10 @@ model Contrato {
   endDate       DateTime
   amount        Float
   status        String    @default("PENDIENTE_FIRMA") // "PENDIENTE_FIRMA", "VIGENTE", "FINALIZADO"
+  landlordName  String?
+  landlordRuc   String?
+  landlordAddress String?
+  specialTerms  String?
   signatureUrl  String?   // URL/Base64/Ruta de la imagen de firma manuscrita
   acceptedTerms Boolean   @default(false)
   createdAt     DateTime  @default(now())

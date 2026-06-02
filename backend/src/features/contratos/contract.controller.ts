@@ -37,7 +37,8 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
             property: true
           }
         }
-      }
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
     res.json(list.map((c: any) => ({
@@ -50,10 +51,15 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
       roomNumber: c.room.roomNumber,
       propertyId: c.room.propertyId,
       propertyName: c.room.property.name,
+      propertyServices: c.room.property.services || '',
       startDate: c.startDate.toISOString().split('T')[0],
       endDate: c.endDate.toISOString().split('T')[0],
       amount: c.amount,
       status: c.status,
+      landlordName: c.landlordName || undefined,
+      landlordRuc: c.landlordRuc || undefined,
+      landlordAddress: c.landlordAddress || undefined,
+      specialTerms: c.specialTerms || undefined,
       signatureUrl: c.signatureUrl || undefined,
       acceptedTerms: c.acceptedTerms,
       createdAt: c.createdAt
@@ -61,6 +67,119 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
   } catch (error) {
     console.error('Error en getContratos:', error);
     res.status(500).json({ error: 'Error al obtener contratos.' });
+  }
+};
+
+export const updateContrato = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+  const { id } = req.params;
+  const { startDate, endDate, amount, landlordName, landlordRuc, landlordAddress, specialTerms } = req.body;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. Solo propietarios pueden editar contratos.' });
+    return;
+  }
+
+  if (!startDate || !endDate || amount === undefined) {
+    res.status(400).json({ error: 'Fecha inicio, fin y monto son requeridos.' });
+    return;
+  }
+
+  try {
+    const contratoId = parseInt(id as string);
+    const existing = await prisma.contrato.findFirst({
+      where: { id: contratoId, tenantId }
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: 'Contrato no encontrado o sin permisos.' });
+      return;
+    }
+
+    if (existing.status !== 'PENDIENTE_FIRMA') {
+      res.status(400).json({ error: 'Solo se pueden editar contratos en borrador.' });
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const parsedAmount = parseFloat(amount);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start || isNaN(parsedAmount) || parsedAmount <= 0) {
+      res.status(400).json({ error: 'Fechas o monto inválidos para el contrato.' });
+      return;
+    }
+
+    const updated = await prisma.contrato.update({
+      where: { id: contratoId },
+      data: {
+        startDate: start,
+        endDate: end,
+        amount: parsedAmount,
+        landlordName: landlordName ? String(landlordName).trim() : null,
+        landlordRuc: landlordRuc ? String(landlordRuc).replace(/\D/g, '') : null,
+        landlordAddress: landlordAddress ? String(landlordAddress).trim() : null,
+        specialTerms: specialTerms ? String(specialTerms).trim() : null
+      }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error en updateContrato:', error);
+    res.status(500).json({ error: 'Error al editar el contrato.' });
+  }
+};
+
+export const consultarRucSunat = async (req: Request, res: Response): Promise<void> => {
+  const { ruc } = req.params;
+  const cleanRuc = String(ruc || '').replace(/\D/g, '');
+
+  if (cleanRuc.length !== 11) {
+    res.status(400).json({ error: 'El RUC debe tener 11 dígitos.' });
+    return;
+  }
+
+  try {
+    const token = process.env.APIPERU_TOKEN;
+    const baseUrl = process.env.APIPERU_BASE_URL || 'https://apiperu.dev';
+
+    if (!token) {
+      res.status(400).json({ error: 'No se configuró APIPERU_TOKEN para consultar SUNAT.' });
+      return;
+    }
+
+    const response = await fetch(`${baseUrl}/api/ruc/${cleanRuc}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      res.status(400).json({ error: 'Error en la consulta a la API SUNAT.' });
+      return;
+    }
+
+    const json: any = await response.json();
+    if (!json.success) {
+      res.status(404).json({ error: 'RUC no encontrado en SUNAT.' });
+      return;
+    }
+
+    const data = json.data || {};
+    res.json({
+      success: true,
+      ruc: data.ruc || cleanRuc,
+      razonSocial: data.razon_social || data.nombre_o_razon_social || data.nombre || '',
+      direccion: data.direccion || data.direccion_completa || '',
+      estado: data.estado || '',
+      condicion: data.condicion || ''
+    });
+  } catch (error) {
+    console.error('Error en consultarRucSunat:', error);
+    res.status(500).json({ error: 'Error interno del servidor al consultar SUNAT.' });
   }
 };
 
@@ -83,6 +202,11 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
 
     if (!contrato) {
       res.status(404).json({ error: 'Contrato no encontrado.' });
+      return;
+    }
+
+    if (contrato.status !== 'PENDIENTE_FIRMA') {
+      res.status(400).json({ error: 'Solo se pueden firmar contratos en borrador.' });
       return;
     }
 
@@ -161,6 +285,10 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
             endDate: new Date(endDate),
             amount: parseFloat(amount),
             status: 'PENDIENTE_FIRMA',
+            landlordName: existing.landlordName,
+            landlordRuc: existing.landlordRuc,
+            landlordAddress: existing.landlordAddress,
+            specialTerms: existing.specialTerms,
             acceptedTerms: false
           }
         })

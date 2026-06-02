@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
 import { Plus, Edit2, Trash2, Layers, Home } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { Pagination } from '../../../core/components/ui/Pagination';
 
 interface Servicio {
   id: number;
@@ -26,6 +27,8 @@ interface Room {
   status: string;
 }
 
+const PAGE_SIZE = 8;
+
 export const Servicios: React.FC = () => {
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -33,6 +36,7 @@ export const Servicios: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Estados Modal
   const [showModal, setShowModal] = useState(false);
@@ -163,6 +167,15 @@ export const Servicios: React.FC = () => {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(servicios.length / PAGE_SIZE));
+  const paginatedServicios = servicios.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   if (loading && servicios.length === 0) {
     return (
       <div className="flex items-center justify-center h-[50vh] text-slate-505">
@@ -214,7 +227,7 @@ export const Servicios: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                servicios.map((ser) => {
+                paginatedServicios.map((ser) => {
                   let badgeColor = 'bg-slate-50 text-slate-600 border-slate-200';
                   if (ser.tipo === 'ADICIONAL') badgeColor = 'bg-purple-50 text-purple-600 border-purple-100';
                   if (ser.tipo === 'INCLUIDO') badgeColor = 'bg-emerald-50 text-emerald-600 border-emerald-100';
@@ -293,6 +306,13 @@ export const Servicios: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalItems={servicios.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+          itemLabel="servicios"
+        />
       </div>
 
       {/* MODAL CREACIÓN / EDICIÓN */}

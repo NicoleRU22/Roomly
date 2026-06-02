@@ -9,9 +9,17 @@ interface Property {
   name: string;
   address: string;
   price: number | null;
+  services?: string;
   rooms?: any[];
   inquilinos?: any[];
 }
+
+const AVAILABLE_SERVICES = [
+  { id: 'wifi', label: 'WiFi' },
+  { id: 'Estacionamiento', label: 'Estacionamiento' },
+  { id: 'Gimnasio', label: 'Gimnasio' },
+  { id: 'Piscina', label: 'Piscina' }
+];
 
 export const Propiedades: React.FC = () => {
   const { tenant } = useParams();
@@ -35,6 +43,7 @@ export const Propiedades: React.FC = () => {
   const [roomsCountInput, setRoomsCountInput] = useState('2');
   const [bathroomsCountInput, setBathroomsCountInput] = useState('2');
   const [roomsList, setRoomsList] = useState<{ roomNumber: string; floor: string; price: string; status: string }[]>([]);
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
   const fetchProperties = async () => {
     setLoading(true);
@@ -62,6 +71,7 @@ export const Propiedades: React.FC = () => {
     setRoomsCountInput('2');
     setBathroomsCountInput('2');
     setRoomsList([]);
+    setSelectedServices([]);
     setWizardStep(1);
     setShowWizard(true);
   };
@@ -71,6 +81,7 @@ export const Propiedades: React.FC = () => {
     setName(prop.name);
     setAddress(prop.address);
     setPrice(prop.price ? String(prop.price) : '');
+    setSelectedServices(prop.services ? prop.services.split(',').map(s => s.trim()).filter(Boolean) : []);
     setShowModal(true);
   };
 
@@ -84,7 +95,8 @@ export const Propiedades: React.FC = () => {
     const payload = {
       name,
       address,
-      price: price ? parseFloat(price) : null
+      price: price ? parseFloat(price) : null,
+      services: selectedServices.join(',')
     };
 
     try {
@@ -157,7 +169,8 @@ export const Propiedades: React.FC = () => {
       const res = await api.post('/properties', {
         name,
         address,
-        price: null
+        price: null,
+        services: selectedServices.join(',')
       });
       const newProperty = res.data;
 
@@ -316,6 +329,40 @@ export const Propiedades: React.FC = () => {
                     min="1"
                     required
                   />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-2">Servicios ofrecidos (Selección múltiple)</label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {AVAILABLE_SERVICES.map((service) => {
+                    const isSelected = selectedServices.includes(service.id);
+                    return (
+                      <button
+                        type="button"
+                        key={service.id}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedServices(selectedServices.filter(s => s !== service.id));
+                          } else {
+                            setSelectedServices([...selectedServices, service.id]);
+                          }
+                        }}
+                        className={`flex items-center space-x-2.5 p-3 rounded-xl border text-xs font-bold transition-all text-left ${
+                          isSelected 
+                            ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7] shadow-sm shadow-purple-50' 
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          className="w-3.5 h-3.5 text-purple-600 border-slate-300 rounded focus:ring-purple-500 pointer-events-none"
+                        />
+                        <span>{service.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -477,10 +524,18 @@ export const Propiedades: React.FC = () => {
               <div className="space-y-1.5">
                 <p className="text-xs font-bold text-slate-700">Servicios</p>
                 <div className="flex flex-wrap gap-1.5">
-                  <span className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">wifi</span>
-                  <span className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">Estacionamiento</span>
-                  <span className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">Gimnasio</span>
-                  <span className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">Piscina</span>
+                  {selectedServices.length === 0 ? (
+                    <span className="text-[10px] text-slate-400 font-medium italic">Ningún servicio seleccionado</span>
+                  ) : (
+                    selectedServices.map(srvId => {
+                      const srv = AVAILABLE_SERVICES.find(s => s.id === srvId);
+                      return (
+                        <span key={srvId} className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">
+                          {srv ? srv.label : srvId}
+                        </span>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -618,10 +673,18 @@ export const Propiedades: React.FC = () => {
                 <div className="space-y-1.5">
                   <p className="text-xs font-bold text-slate-700">Servicios</p>
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">wifi</span>
-                    <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">Estacionamiento</span>
-                    <span className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">Gimnasio</span>
-                    <span className="px-2.5 py-0.5 bg-purple-50 text-purple-650 border border-purple-100 text-[10px] font-semibold rounded-full">Piscina</span>
+                    {(!prop.services || prop.services.trim() === '') ? (
+                      <span className="text-[10px] text-slate-400 font-medium italic">Sin servicios asignados</span>
+                    ) : (
+                      prop.services.split(',').map((srvId: string) => srvId.trim()).filter(Boolean).map((srvId: string) => {
+                        const srv = AVAILABLE_SERVICES.find(s => s.id === srvId);
+                        return (
+                          <span key={srvId} className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">
+                            {srv ? srv.label : srvId}
+                          </span>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -683,6 +746,42 @@ export const Propiedades: React.FC = () => {
                   className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-600"
                   required
                 />
+              </div>
+
+              {/* Servicios quick edit */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500 mb-2">Servicios ofrecidos</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {AVAILABLE_SERVICES.map((service) => {
+                    const isSelected = selectedServices.includes(service.id);
+                    return (
+                      <button
+                        type="button"
+                        key={service.id}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedServices(selectedServices.filter(s => s !== service.id));
+                          } else {
+                            setSelectedServices([...selectedServices, service.id]);
+                          }
+                        }}
+                        className={`flex items-center space-x-2 p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
+                          isSelected 
+                            ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7]' 
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          className="w-3.5 h-3.5 text-purple-600 border-slate-300 rounded focus:ring-purple-500 pointer-events-none"
+                        />
+                        <span>{service.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex justify-end space-x-3 pt-2">

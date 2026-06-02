@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
 import { Plus, MessageSquare, FileText, Search, Filter, Trash2, Edit, AlertTriangle, CheckCircle } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { AsYouType, parsePhoneNumberFromString } from 'libphonenumber-js';
+import { Pagination } from '../../../core/components/ui/Pagination';
+import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 
 interface Inquilino {
   id: number;
@@ -48,10 +51,22 @@ interface Contrato {
   endDate: string;
   amount: number;
   status: string;
+  propertyServices?: string;
   signatureUrl?: string;
 }
 
+const PAGE_SIZE = 8;
+const CREDENTIALS_CACHE_KEY = 'roomly_inquilino_credentials';
+const SERVICE_LABELS: Record<string, string> = {
+  wifi: 'WiFi',
+  WiFi: 'WiFi',
+  Estacionamiento: 'Estacionamiento',
+  Gimnasio: 'Gimnasio',
+  Piscina: 'Piscina'
+};
+
 export const Inquilinos: React.FC = () => {
+  const tenantSlug = useAuthStore((state) => state.tenant?.slug || '');
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -66,6 +81,11 @@ export const Inquilinos: React.FC = () => {
   const [filterProperty, setFilterProperty] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterProperty, filterStatus, filterDate]);
 
   // Estados Modal Inquilino Form
   const [showModal, setShowModal] = useState(false);
@@ -77,13 +97,19 @@ export const Inquilinos: React.FC = () => {
   const [documentVal, setDocumentVal] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [status, setStatus] = useState('ACTIVO');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
 
+  // Estados Modal Mostrar Credenciales Creadas
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{ email: string; tempPassword?: string } | null>(null);
+
   // Estado Modal Visualizador de Contrato
   const [showContractModal, setShowContractModal] = useState(false);
   const [viewingContract, setViewingContract] = useState<Contrato | null>(null);
+  const [viewingContracts, setViewingContracts] = useState<Contrato[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
@@ -118,6 +144,54 @@ export const Inquilinos: React.FC = () => {
     setDniError(null);
     if (val.length === 8) {
       handleBuscarDni(val);
+    }
+  };
+
+  const normalizePhoneForSave = () => {
+    const digits = phone.replace(/\D/g, '');
+    if (!digits) return null;
+
+    const phoneNumber = parsePhoneNumberFromString(digits, 'PE');
+    if (!phoneNumber?.isValid() || digits.length !== 9) {
+      setPhoneError('Ingresa un telefono peruano valido de 9 digitos.');
+      return undefined;
+    }
+
+    setPhoneError(null);
+    return phoneNumber.number;
+  };
+
+  const formatPhoneForDisplay = (value?: string) => {
+    if (!value) return '-';
+    const parsed = parsePhoneNumberFromString(value, 'PE');
+    return parsed?.isValid() ? parsed.formatNational() : value;
+  };
+
+  const getContractServices = (contract: Contrato) => {
+    return (contract.propertyServices || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => SERVICE_LABELS[item] || item);
+  };
+
+  const cacheCredentials = (credentials: { email: string; tempPassword?: string }) => {
+    const entry = {
+      tenantSlug,
+      user: credentials.email,
+      password: credentials.tempPassword || 'Roomly-1234',
+      cachedAt: new Date().toISOString()
+    };
+
+    try {
+      const cached = localStorage.getItem(CREDENTIALS_CACHE_KEY);
+      const previous = cached ? JSON.parse(cached) : [];
+      const filtered = Array.isArray(previous)
+        ? previous.filter((item: { user?: string; tenantSlug?: string }) => item.user !== entry.user || item.tenantSlug !== entry.tenantSlug)
+        : [];
+      localStorage.setItem(CREDENTIALS_CACHE_KEY, JSON.stringify([entry, ...filtered].slice(0, 25)));
+    } catch (err) {
+      console.error('Error cacheando credenciales del inquilino:', err);
     }
   };
 
@@ -174,6 +248,7 @@ export const Inquilinos: React.FC = () => {
     setDocumentVal('');
     setEmail('');
     setPhone('');
+    setPhoneError(null);
     setStatus('ACTIVO');
     setSelectedPropertyId('');
     setSelectedRoomId('');
@@ -185,7 +260,11 @@ export const Inquilinos: React.FC = () => {
     setName(inq.name);
     setDocumentVal(inq.document);
     setEmail(inq.email);
-    setPhone(inq.phone || '');
+    // Formatear al abrir
+    const digits = (inq.phone || '').replace(/\D/g, '').replace(/^51/, '').slice(0, 9);
+    const formatted = new AsYouType('PE').input(digits);
+    setPhone(formatted || inq.phone || '');
+    setPhoneError(null);
     setStatus(inq.status);
     setSelectedPropertyId(inq.propertyId ? String(inq.propertyId) : '');
     setSelectedRoomId(inq.roomId ? String(inq.roomId) : '');
@@ -195,6 +274,9 @@ export const Inquilinos: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !documentVal || !email || !status) return;
+    const normalizedPhone = normalizePhoneForSave();
+    if (phone.trim() && normalizedPhone === undefined) return;
+
     setSubmitting(true);
     setError(null);
 
@@ -202,7 +284,7 @@ export const Inquilinos: React.FC = () => {
       name,
       document: documentVal,
       email,
-      phone,
+      phone: normalizedPhone,
       status,
       propertyId: selectedPropertyId ? parseInt(selectedPropertyId) : null,
       roomId: selectedRoomId ? parseInt(selectedRoomId) : null
@@ -211,16 +293,32 @@ export const Inquilinos: React.FC = () => {
     try {
       if (editingId) {
         await api.put(`/inquilinos/${editingId}`, payload);
+        setShowModal(false);
+        fetchData();
       } else {
-        await api.post('/inquilinos', payload);
+        const res = await api.post('/inquilinos', payload);
+        setCreatedCredentials({
+          email: res.data.email,
+          tempPassword: res.data.tempPassword
+        });
+        cacheCredentials({
+          email: res.data.email,
+          tempPassword: res.data.tempPassword
+        });
+        setShowModal(false);
+        setShowCredentialsModal(true);
+        fetchData();
       }
-      setShowModal(false);
-      fetchData();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Error al guardar el inquilino.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const copyToClipboard = (text: string, type: string) => {
+    navigator.clipboard.writeText(text);
+    alert(`${type} copiado al portapapeles.`);
   };
 
   const handleDelete = async (id: number) => {
@@ -249,12 +347,16 @@ export const Inquilinos: React.FC = () => {
 
   // Buscar contrato activo de inquilino
   const openInquilinoContract = (inqId: number) => {
-    const contract = contracts.find(c => c.inquilinoId === inqId && c.status !== 'FINALIZADO' && c.status !== 'CANCELADO');
+    const tenantContracts = contracts
+      .filter(c => c.inquilinoId === inqId)
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    const contract = tenantContracts.find(c => c.status !== 'FINALIZADO' && c.status !== 'CANCELADO') || tenantContracts[0];
     if (contract) {
+      setViewingContracts(tenantContracts);
       setViewingContract(contract);
       setShowContractModal(true);
     } else {
-      alert('Este inquilino no tiene un contrato activo o en borrador.');
+      alert('Este inquilino no tiene contratos registrados.');
     }
   };
 
@@ -275,6 +377,16 @@ export const Inquilinos: React.FC = () => {
 
     return matchesSearch && matchesProperty && matchesStatus && matchesDate;
   });
+
+  const availableRoomsForSelection = rooms.filter(r => r.status === 'Disponible' || r.id === parseInt(selectedRoomId));
+  const totalPages = Math.max(1, Math.ceil(filteredInquilinos.length / PAGE_SIZE));
+  const paginatedInquilinos = filteredInquilinos.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   if (loading && inquilinos.length === 0) {
     return (
@@ -390,7 +502,7 @@ export const Inquilinos: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredInquilinos.map((inq) => {
+                paginatedInquilinos.map((inq) => {
                   const entryDate = getFechaEntrada(inq.name, inq.id);
                   const debt = getDebtAmount(inq.id);
                   
@@ -400,7 +512,9 @@ export const Inquilinos: React.FC = () => {
 
                   // Whatsapp text encoding
                   const waText = encodeURIComponent(`Hola ${inq.name}, te saludamos de Roomly. Te recordamos que tienes cobros pendientes en la plataforma. Por favor ingresa para regularizarlos.`);
-                  const waLink = inq.phone ? `https://wa.me/51${inq.phone.replace(/\D/g, '')}?text=${waText}` : null;
+                  const phoneDigits = inq.phone ? inq.phone.replace(/\D/g, '') : '';
+                  const waPhone = phoneDigits.startsWith('51') ? phoneDigits : `51${phoneDigits}`;
+                  const waLink = phoneDigits ? `https://wa.me/${waPhone}?text=${waText}` : null;
 
                   return (
                     <tr key={inq.id} className="hover:bg-slate-50/40 transition-colors border-b border-slate-200 last:border-0">
@@ -430,7 +544,7 @@ export const Inquilinos: React.FC = () => {
 
                       {/* Teléfono */}
                       <td className="px-6 py-4 text-slate-500 font-mono text-xs border-r border-slate-200">
-                        {inq.phone || '-'}
+                        {formatPhoneForDisplay(inq.phone)}
                       </td>
 
                       {/* Fecha de Entrada */}
@@ -510,6 +624,13 @@ export const Inquilinos: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredInquilinos.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+          itemLabel="inquilinos"
+        />
       </div>
 
       {/* MODAL VISUALIZADOR INLINE DE CONTRATO */}
@@ -535,7 +656,26 @@ export const Inquilinos: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs text-slate-650 leading-relaxed font-sans z-10">
-              
+              {viewingContracts.length > 1 && (
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contrato</label>
+                  <select
+                    value={viewingContract.id}
+                    onChange={(e) => {
+                      const selected = viewingContracts.find((contract) => contract.id === parseInt(e.target.value));
+                      if (selected) setViewingContract(selected);
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-purple-650"
+                  >
+                    {viewingContracts.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        Contrato #{1000 + contract.id} - {contract.status} ({new Date(contract.startDate).toLocaleDateString()} a {new Date(contract.endDate).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Alerta de firma digitalizada */}
               {viewingContract.signatureUrl ? (
                 <div className="p-3 bg-emerald-50 border border-emerald-150 rounded-xl text-emerald-800 font-semibold flex items-center gap-1.5">
@@ -557,6 +697,12 @@ export const Inquilinos: React.FC = () => {
                 <p>
                   Por el presente documento, se formaliza el arriendo de la <strong>Habitación N° {viewingContract.roomNumber}</strong> en la propiedad <strong>{viewingContract.propertyName}</strong>, celebrado entre **Roomly Group** (El Arrendador) y <strong>{viewingContract.inquilinoName}</strong> (El Arrendatario).
                 </p>
+
+                {getContractServices(viewingContract).length > 0 && (
+                  <p>
+                    <strong>SERVICIOS INCLUIDOS:</strong> {getContractServices(viewingContract).join(', ')}.
+                  </p>
+                )}
 
                 <p>
                   <strong>VIGENCIA:</strong> Inicia el <strong>{new Date(viewingContract.startDate).toLocaleDateString()}</strong> y finaliza el <strong>{new Date(viewingContract.endDate).toLocaleDateString()}</strong>.
@@ -694,11 +840,20 @@ export const Inquilinos: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-500 mb-1.5">Teléfono</label>
                   <input
                     type="text"
-                    placeholder="ej. 987654321"
+                    placeholder="ej. 987 654 321"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    maxLength={13}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 9);
+                      const formatted = new AsYouType('PE').input(digits);
+                      setPhoneError(null);
+                      setPhone(formatted);
+                    }}
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 transition-colors"
                   />
+                  {phoneError && (
+                    <p className="text-[10px] text-red-500 mt-1 font-medium">{phoneError}</p>
+                  )}
                 </div>
               </div>
 
@@ -726,7 +881,7 @@ export const Inquilinos: React.FC = () => {
                     {properties.find(p => p.id === parseInt(selectedPropertyId))?.name}
                   </p>
                   <p className="text-xs text-purple-600 font-bold mt-1">
-                    Cuartos disponibles: {rooms.filter(r => r.status === 'Disponible' || r.id === parseInt(selectedRoomId)).length}
+                    Cuartos disponibles: {availableRoomsForSelection.length}
                   </p>
                 </div>
               )}
@@ -742,7 +897,7 @@ export const Inquilinos: React.FC = () => {
                     disabled={!selectedPropertyId || loadingRooms}
                   >
                     <option value="">-- Elige un cuarto --</option>
-                    {rooms.map(r => (
+                    {availableRoomsForSelection.map(r => (
                       <option key={r.id} value={r.id}>
                         Cuarto {r.roomNumber} (S/. {r.price}/mes)
                       </option>
@@ -779,6 +934,69 @@ export const Inquilinos: React.FC = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+      {showCredentialsModal && createdCredentials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCredentialsModal(false)} />
+          
+          <div className="bg-white border border-slate-200 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl z-10 p-8 space-y-6">
+            <div className="text-center space-y-3">
+              <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Inquilino Registrado</h3>
+                <p className="text-xs text-slate-505 mt-1">
+                  Se han generado las credenciales temporales de acceso para el inquilino
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-3.5">
+                <div>
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Usuario (Correo)</span>
+                  <div className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-805">
+                    <span className="truncate mr-2">{createdCredentials.email}</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(createdCredentials.email, 'Usuario')}
+                      className="text-purple-600 hover:text-purple-700 font-bold shrink-0 text-[10px]"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Contraseña Temporal</span>
+                  <div className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-850">
+                    <span>{createdCredentials.tempPassword || 'Roomly-1234'}</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(createdCredentials.tempPassword || 'Roomly-1234', 'Contraseña')}
+                      className="text-purple-600 hover:text-purple-700 font-bold shrink-0 text-[10px]"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-purple-50 text-purple-700 border border-purple-100 rounded-xl text-[10px] text-center font-medium leading-normal">
+                Las credenciales también han sido registradas para el envío simulado de correos y guardadas en cache local. Comparte estos accesos con el inquilino para su primer inicio de sesión.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCredentialsModal(false)}
+              className="w-full py-3 bg-[#A855F7] hover:bg-purple-650 text-white text-xs font-bold rounded-xl shadow-sm transition-all text-center"
+            >
+              Cerrar y continuar
+            </button>
           </div>
         </div>
       )}

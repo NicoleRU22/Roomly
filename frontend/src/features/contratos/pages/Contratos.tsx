@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { User, Shield, Building, Printer, CheckCircle, AlertTriangle, Search, Filter, RefreshCw } from 'lucide-react';
+import { User, Shield, Building, Printer, CheckCircle, AlertTriangle, Search, Filter, RefreshCw, Edit2 } from 'lucide-react';
+import { Pagination } from '../../../core/components/ui/Pagination';
 
 interface Contrato {
   id: number;
@@ -13,10 +14,15 @@ interface Contrato {
   roomNumber: string;
   propertyId: number;
   propertyName: string;
+  propertyServices?: string;
   startDate: string;
   endDate: string;
   amount: number;
   status: string;
+  landlordName?: string;
+  landlordRuc?: string;
+  landlordAddress?: string;
+  specialTerms?: string;
   signatureUrl?: string;
   acceptedTerms: boolean;
   createdAt: string;
@@ -26,6 +32,15 @@ interface Property {
   id: number;
   name: string;
 }
+
+const PAGE_SIZE = 6;
+const SERVICE_LABELS: Record<string, string> = {
+  wifi: 'WiFi',
+  WiFi: 'WiFi',
+  Estacionamiento: 'Estacionamiento',
+  Gimnasio: 'Gimnasio',
+  Piscina: 'Piscina'
+};
 
 export const Contratos: React.FC = () => {
   const { user } = useAuthStore();
@@ -42,6 +57,7 @@ export const Contratos: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Estados de firma (Inquilino)
   const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
@@ -51,6 +67,7 @@ export const Contratos: React.FC = () => {
   // Modal de detalles (Propietario / Inquilino)
   const [selectedContract, setSelectedContract] = useState<Contrato | null>(null);
   const [showDocModal, setShowDocModal] = useState(false);
+  const [selectedContractIndex, setSelectedContractIndex] = useState(0);
 
   // Estados Modal de Renovación
   const [showRenewModal, setShowRenewModal] = useState(false);
@@ -59,6 +76,19 @@ export const Contratos: React.FC = () => {
   const [newEndDate, setNewEndDate] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [renewing, setRenewing] = useState(false);
+
+  // Estados Modal de Edicion
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [contractToEdit, setContractToEdit] = useState<Contrato | null>(null);
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editEndDate, setEditEndDate] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editLandlordRuc, setEditLandlordRuc] = useState('');
+  const [editLandlordName, setEditLandlordName] = useState('');
+  const [editLandlordAddress, setEditLandlordAddress] = useState('');
+  const [editSpecialTerms, setEditSpecialTerms] = useState('');
+  const [consultingSunat, setConsultingSunat] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const getApiUrl = () => {
     return import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -87,6 +117,10 @@ export const Contratos: React.FC = () => {
   useEffect(() => {
     fetchContratosAndProperties();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterProperty, filterStatus, filterDateStart, filterDateEnd]);
 
   // Leer foto de firma y convertir a Base64
   const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,6 +188,64 @@ export const Contratos: React.FC = () => {
     setShowRenewModal(true);
   };
 
+  const openEditModal = (contract: Contrato) => {
+    setContractToEdit(contract);
+    setEditStartDate(contract.startDate);
+    setEditEndDate(contract.endDate);
+    setEditAmount(String(contract.amount));
+    setEditLandlordRuc(contract.landlordRuc || '');
+    setEditLandlordName(contract.landlordName || '');
+    setEditLandlordAddress(contract.landlordAddress || '');
+    setEditSpecialTerms(contract.specialTerms || '');
+    setShowEditModal(true);
+  };
+
+  const handleConsultSunat = async () => {
+    const cleanRuc = editLandlordRuc.replace(/\D/g, '');
+    if (cleanRuc.length !== 11) {
+      setError('El RUC debe tener 11 digitos.');
+      return;
+    }
+
+    setConsultingSunat(true);
+    setError(null);
+    try {
+      const res = await api.get(`/contratos/consultar-ruc/${cleanRuc}`);
+      setEditLandlordRuc(res.data.ruc || cleanRuc);
+      setEditLandlordName(res.data.razonSocial || '');
+      setEditLandlordAddress(res.data.direccion || '');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'No se pudo consultar SUNAT.');
+    } finally {
+      setConsultingSunat(false);
+    }
+  };
+
+  const handleUpdateContract = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contractToEdit) return;
+    setSavingEdit(true);
+    setError(null);
+
+    try {
+      await api.put(`/contratos/${contractToEdit.id}`, {
+        startDate: editStartDate,
+        endDate: editEndDate,
+        amount: parseFloat(editAmount),
+        landlordName: editLandlordName,
+        landlordRuc: editLandlordRuc,
+        landlordAddress: editLandlordAddress,
+        specialTerms: editSpecialTerms
+      });
+      setShowEditModal(false);
+      fetchContratosAndProperties();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'No se pudo editar el contrato.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const handleRenewContract = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contractToRenew || !newStartDate || !newEndDate || !newAmount) return;
@@ -185,6 +277,16 @@ export const Contratos: React.FC = () => {
     return `${day}/${month}/${year}`;
   };
 
+  const getContractServices = (contract: Contrato) => {
+    return (contract.propertyServices || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => SERVICE_LABELS[item] || item);
+  };
+
+  const getLandlordName = (contract: Contrato) => contract.landlordName || 'Roomly Group S.A.C.';
+
   // Filtrado de Contratos para Propietario
   const filteredContratos = contratos.filter(c => {
     const matchesSearch = c.inquilinoName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -215,6 +317,15 @@ export const Contratos: React.FC = () => {
     return matchesSearch && matchesProperty && matchesStatus && matchesDate;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredContratos.length / PAGE_SIZE));
+  const paginatedContratos = filteredContratos.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[50vh] text-slate-500">
@@ -228,7 +339,7 @@ export const Contratos: React.FC = () => {
   // RENDER PORTAL INQUILINO (VER / FIRMAR CONTRATO)
   // ==========================================
   if (isTenant) {
-    const myContract = contratos[0]; // El inquilino solo tiene un contrato activo/pendiente
+    const myContract = contratos[selectedContractIndex] || contratos[0];
 
     if (!myContract) {
       return (
@@ -242,6 +353,24 @@ export const Contratos: React.FC = () => {
 
     return (
       <div className="space-y-6 max-w-3xl">
+        {/* Selector de Contratos (si hay más de uno) */}
+        {contratos.length > 1 && (
+          <div className="bg-white border border-slate-200 p-4.5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+            <span className="text-xs font-bold text-slate-700">Ver documento de arriendo para:</span>
+            <select
+              value={selectedContractIndex}
+              onChange={(e) => setSelectedContractIndex(parseInt(e.target.value))}
+              className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-purple-650"
+            >
+              {contratos.map((c, idx) => (
+                <option key={c.id} value={idx}>
+                  Habitación {c.roomNumber} - {c.status} ({formatDate(c.startDate)} a {formatDate(c.endDate)})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Banner de alerta de firma */}
         {isDraft ? (
           <div className="bg-rose-50 border border-rose-200 p-6 rounded-3xl space-y-2">
@@ -305,12 +434,24 @@ export const Contratos: React.FC = () => {
 
           <div className="space-y-4 z-10 relative">
             <p>
-              Conste por el presente documento el contrato de arrendamiento que celebran, de una parte **Roomly Group S.A.C.** (en adelante **El Arrendador**), y de la otra parte don/doña <strong>{myContract.inquilinoName}</strong> con Documento Nacional de Identidad N° <strong>{myContract.inquilinoDocument}</strong> (en adelante **El Arrendatario**), bajo los términos y condiciones siguientes:
+              Conste por el presente documento el contrato de arrendamiento que celebran, de una parte <strong>{getLandlordName(myContract)}</strong>{myContract.landlordRuc ? <> con RUC N° <strong>{myContract.landlordRuc}</strong></> : null} (en adelante <strong>El Arrendador</strong>), y de la otra parte don/doña <strong>{myContract.inquilinoName}</strong> con Documento Nacional de Identidad N° <strong>{myContract.inquilinoDocument}</strong> (en adelante <strong>El Arrendatario</strong>), bajo los términos y condiciones siguientes:
             </p>
+
+            {myContract.landlordAddress && (
+              <p>
+                <strong>DOMICILIO DEL ARRENDADOR:</strong> {myContract.landlordAddress}.
+              </p>
+            )}
             
             <p>
               <strong>PRIMERA (Objeto):</strong> El Arrendador cede en arrendamiento al Arrendatario la <strong>Habitación N° {myContract.roomNumber}</strong> ubicada en la propiedad <strong>{myContract.propertyName}</strong>. La habitación se entrega amoblada y en óptimo estado de funcionamiento.
             </p>
+
+            {getContractServices(myContract).length > 0 && (
+              <p>
+                <strong>SERVICIOS INCLUIDOS:</strong> {getContractServices(myContract).join(', ')}.
+              </p>
+            )}
             
             <p>
               <strong>SEGUNDA (Plazo):</strong> El plazo de arriendo es de duración forzosa, el cual inicia el <strong>{formatDate(myContract.startDate)}</strong> y concluye el <strong>{formatDate(myContract.endDate)}</strong>.
@@ -327,6 +468,12 @@ export const Contratos: React.FC = () => {
             <p>
               <strong>QUINTA (Términos Generales):</strong> El Arrendatario se compromete a cuidar las áreas comunes, respetar los reglamentos del inmueble, y no realizar modificaciones estructurales a la habitación sin consentimiento del Arrendador.
             </p>
+
+            {myContract.specialTerms && (
+              <p>
+                <strong>CONDICIONES ADICIONALES:</strong> {myContract.specialTerms}
+              </p>
+            )}
           </div>
 
           {/* Firmas */}
@@ -336,7 +483,7 @@ export const Contratos: React.FC = () => {
                 [ Firma Digitalizada / Representante ]
               </div>
               <p className="font-bold text-slate-800">El Arrendador</p>
-              <p className="text-[10px] text-slate-400">Roomly Group S.A.C.</p>
+              <p className="text-[10px] text-slate-400">{getLandlordName(myContract)}</p>
             </div>
 
             <div className="text-center space-y-4">
@@ -513,9 +660,10 @@ export const Contratos: React.FC = () => {
             No se han registrado contratos que coincidan con los filtros (asigna una habitación a un inquilino para generarlos).
           </div>
         ) : (
-          filteredContratos.map((contract) => {
+          paginatedContratos.map((contract) => {
             const isDraft = contract.status === 'PENDIENTE_FIRMA';
             const nearExpiration = contract.status === 'VIGENTE' && isNearExpiration(contract.endDate);
+            const services = getContractServices(contract);
             return (
               <div key={contract.id} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 relative overflow-hidden">
                 
@@ -595,8 +743,27 @@ export const Contratos: React.FC = () => {
                   </div>
                 </div>
 
+                {services.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {services.map((service) => (
+                      <span key={service} className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-bold rounded-full">
+                        {service}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {/* Botón de Visualización de Documento y Renovación */}
                 <div className="pt-2 border-t border-slate-100 flex gap-2">
+                  {isDraft && (
+                    <button
+                      onClick={() => openEditModal(contract)}
+                      className="flex items-center justify-center py-2 px-4 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all shadow-sm gap-1.5"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      Editar
+                    </button>
+                  )}
                   {nearExpiration ? (
                     <button
                       onClick={() => openRenewModal(contract)}
@@ -621,6 +788,13 @@ export const Contratos: React.FC = () => {
           })
         )}
       </div>
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filteredContratos.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+        itemLabel="contratos"
+      />
 
       {/* MODAL DETALLES DEL CONTRATO (PROPIETARIO / DETALLE COMPLETO CON WATERMARK Y BANNER) */}
       {showDocModal && selectedContract && (
@@ -666,12 +840,24 @@ export const Contratos: React.FC = () => {
 
                 <div className="space-y-3.5 text-xs text-slate-650">
                   <p>
-                    Conste por el presente documento el contrato de arrendamiento que celebran, de una parte **Roomly Group S.A.C.** (en adelante **El Arrendador**), y de la otra parte don/doña **{selectedContract.inquilinoName}** con Documento Nacional de Identidad N° **{selectedContract.inquilinoDocument}** (en adelante **El Arrendatario**), bajo los términos y condiciones siguientes:
+                    Conste por el presente documento el contrato de arrendamiento que celebran, de una parte **{getLandlordName(selectedContract)}**{selectedContract.landlordRuc ? ` con RUC N° ${selectedContract.landlordRuc}` : ''} (en adelante **El Arrendador**), y de la otra parte don/doña **{selectedContract.inquilinoName}** con Documento Nacional de Identidad N° **{selectedContract.inquilinoDocument}** (en adelante **El Arrendatario**), bajo los términos y condiciones siguientes:
                   </p>
+
+                  {selectedContract.landlordAddress && (
+                    <p>
+                      **DOMICILIO DEL ARRENDADOR:** {selectedContract.landlordAddress}.
+                    </p>
+                  )}
                   
                   <p>
                     **PRIMERA (Objeto):** El Arrendador cede en arrendamiento al Arrendatario la **Habitación N° {selectedContract.roomNumber}** ubicada en la propiedad **{selectedContract.propertyName}**.
                   </p>
+
+                  {getContractServices(selectedContract).length > 0 && (
+                    <p>
+                      **SERVICIOS INCLUIDOS:** {getContractServices(selectedContract).join(', ')}.
+                    </p>
+                  )}
                   
                   <p>
                     **SEGUNDA (Plazo):** El plazo del contrato inicia el **{formatDate(selectedContract.startDate)}** y concluye el **{formatDate(selectedContract.endDate)}**.
@@ -684,6 +870,12 @@ export const Contratos: React.FC = () => {
                   <p>
                     **CUARTA (Mora):** Aplica recargo automático de S/. 5.00 diarios después de 5 días de retraso.
                   </p>
+
+                  {selectedContract.specialTerms && (
+                    <p>
+                      **CONDICIONES ADICIONALES:** {selectedContract.specialTerms}
+                    </p>
+                  )}
                 </div>
 
                 {/* Firmas */}
@@ -723,6 +915,93 @@ export const Contratos: React.FC = () => {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDICION DE CONTRATO BORRADOR */}
+      {showEditModal && contractToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowEditModal(false)} />
+
+          <div className="bg-white border border-slate-200 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl z-10 p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-md font-bold text-slate-950 flex items-center gap-1.5">
+                  <Edit2 className="w-4 h-4 text-purple-650" />
+                  Editar contrato borrador
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Los contratos vigentes o finalizados no se editan; se renuevan o se crea un nuevo borrador.
+                </p>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-900 font-bold">x</button>
+            </div>
+
+            <div className="text-xs space-y-1.5 p-3.5 bg-slate-50 border border-slate-100 rounded-xl text-slate-650">
+              <p><span className="font-semibold text-slate-800">Inquilino:</span> {contractToEdit.inquilinoName}</p>
+              <p><span className="font-semibold text-slate-800">Habitacion:</span> Cuarto {contractToEdit.roomNumber} ({contractToEdit.propertyName})</p>
+            </div>
+
+            <form onSubmit={handleUpdateContract} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Inicio</label>
+                  <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono" required />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Fin</label>
+                  <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono" required />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Renta (S/.)</label>
+                  <input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold" required />
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-2xl p-4 space-y-4">
+                <div className="flex flex-col md:flex-row gap-3 md:items-end">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">RUC arrendador</label>
+                    <input
+                      type="text"
+                      value={editLandlordRuc}
+                      maxLength={11}
+                      onChange={(e) => setEditLandlordRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                      placeholder="11 digitos"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono"
+                    />
+                  </div>
+                  <button type="button" onClick={handleConsultSunat} disabled={consultingSunat || editLandlordRuc.replace(/\D/g, '').length !== 11} className="py-2 px-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl">
+                    {consultingSunat ? 'Consultando...' : 'Consultar SUNAT'}
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Razon social</label>
+                  <input type="text" value={editLandlordName} onChange={(e) => setEditLandlordName(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600" />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Direccion fiscal</label>
+                  <input type="text" value={editLandlordAddress} onChange={(e) => setEditLandlordAddress(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Condiciones adicionales</label>
+                <textarea rows={3} value={editSpecialTerms} onChange={(e) => setEditSpecialTerms(e.target.value)} placeholder="Ej. uso de areas comunes, reglas internas, depositos, garantias..." className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 resize-none" />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-2">
+                <button type="button" onClick={() => setShowEditModal(false)} className="py-2 px-4 bg-transparent border border-slate-200 hover:bg-slate-50 text-slate-500 text-xs font-semibold rounded-xl">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={savingEdit} className="py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-purple-100 disabled:opacity-50">
+                  {savingEdit ? 'Guardando...' : 'Guardar borrador'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
