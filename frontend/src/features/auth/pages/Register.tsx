@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../../core/services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const Register: React.FC = () => {
@@ -48,7 +48,7 @@ export const Register: React.FC = () => {
 
     try {
       // 1. Registrar Tenant y Propietario
-      await axios.post(`http://localhost:3001/api/auth/register`, {
+      await api.post(`/auth/register`, {
         firstName,
         lastName,
         email,
@@ -58,7 +58,7 @@ export const Register: React.FC = () => {
       });
 
       // 2. Hacer login automático inmediatamente tras registrar
-      const loginRes = await axios.post(`http://localhost:3001/api/auth/login`, {
+      const loginRes = await api.post(`/auth/login`, {
         email,
         password
       });

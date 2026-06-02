@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../../core/services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
 export const Login: React.FC = () => {
@@ -25,7 +25,7 @@ export const Login: React.FC = () => {
     setError(null);
 
     try {
-      const res = await axios.post(`http://localhost:3001/api/auth/login`, {
+      const res = await api.post(`/auth/login`, {
         email,
         password
       });

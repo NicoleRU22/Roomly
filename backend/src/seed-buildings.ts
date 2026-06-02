@@ -1,4 +1,5 @@
 import prisma from './core/db/prisma';
+import bcrypt from 'bcryptjs';
 
 async function main() {
   console.log('Iniciando limpieza y generación de datos de prueba...');
@@ -15,6 +16,23 @@ async function main() {
     console.log(`Tenant creado: ${tenant.companyName} (${tenant.slug})`);
   } else {
     console.log(`Tenant encontrado: ${tenant.companyName} (${tenant.slug})`);
+  }
+
+  // Crear usuario propietario por defecto si no existe ninguno
+  const userCount = await prisma.usuario.count({ where: { tenantId: tenant.id } });
+  if (userCount === 0) {
+    const hashedPassword = await bcrypt.hash('password123', 10);
+    const defaultUser = await prisma.usuario.create({
+      data: {
+        email: 'propietario@roomly.com',
+        password: hashedPassword,
+        firstName: 'Nicole',
+        lastName: 'Demo',
+        role: 'PROPIETARIO',
+        tenantId: tenant.id
+      }
+    });
+    console.log(`Usuario por defecto creado: ${defaultUser.email} / contraseña: password123`);
   }
 
   // 2. Limpiar datos existentes (para evitar conflictos de FK, limpiamos en orden)
