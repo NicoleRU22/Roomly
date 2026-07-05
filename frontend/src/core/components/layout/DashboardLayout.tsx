@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore';
+import { useNotifications } from '../../../features/notificaciones/useNotifications';
 import { 
   Home, 
   LayoutGrid,
@@ -19,16 +20,53 @@ import {
 } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
+const NOTIF_BADGE: Record<string, { label: string; className: string }> = {
+  PAGO_GENERADO: { label: 'Pagos', className: 'bg-purple-50 text-purple-650 border-purple-100' },
+  PAGO_APROBADO: { label: 'Pagos', className: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+  PAGO_RECHAZADO: { label: 'Pagos', className: 'bg-rose-50 text-rose-600 border-rose-100' },
+  COMPROBANTE_PENDIENTE: { label: 'Validar', className: 'bg-indigo-50 text-indigo-650 border-indigo-100' },
+  CONTRATO_PENDIENTE: { label: 'Contratos', className: 'bg-rose-50 text-rose-600 border-rose-100' },
+  CONTRATO_FIRMADO: { label: 'Contratos', className: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+  TICKET_CREADO: { label: 'Avería', className: 'bg-amber-50 text-amber-600 border-amber-100' },
+  TICKET_ACTUALIZADO: { label: 'Tickets', className: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+};
+
+const formatRelativeTime = (dateStr: string) => {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'Ahora';
+  if (diffMin < 60) return `Hace ${diffMin}m`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `Hace ${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  return `Hace ${diffD}d`;
+};
+
 export const DashboardLayout: React.FC = () => {
   const { tenant, logout, user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleToggleNotifications = () => {
+    if (!showNotifications) fetchNotifications();
+    setShowNotifications(!showNotifications);
+  };
+
+  const handleNotificationClick = (notif: { id: number; isRead: boolean; link?: string }) => {
+    if (!notif.isRead) markAsRead(notif.id);
+    if (notif.link) {
+      navigate(`/${tenant?.slug}${notif.link}`);
+      setShowNotifications(false);
+    }
   };
 
   const navItems = [
@@ -168,10 +206,74 @@ export const DashboardLayout: React.FC = () => {
             >
               {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-            <button className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100 relative" title="Notificaciones">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-purple-650 rounded-full" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={handleToggleNotifications}
+                className={`p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100 relative ${showNotifications ? 'bg-muted text-foreground' : ''}`}
+                title="Notificaciones"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-0.5 flex items-center justify-center bg-purple-650 border-2 border-background rounded-full text-[8px] font-black text-white leading-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />
+                  <div className="absolute right-0 mt-3 w-80 bg-card border border-border rounded-2xl shadow-xl z-45 p-4 space-y-3 animate-modal-in">
+                    <div className="flex justify-between items-center pb-2 border-b border-border">
+                      <span className="text-xs font-black text-foreground uppercase tracking-wider">Notificaciones</span>
+                      <div className="flex items-center gap-3">
+                        {notifications.some(n => !n.isRead) && (
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-[10px] font-bold text-purple-650 hover:underline"
+                          >
+                            Marcar todas
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowNotifications(false)}
+                          className="text-[10px] font-bold text-muted-foreground hover:underline"
+                        >
+                          Cerrar
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {notifications.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground text-center py-6">No tienes notificaciones.</p>
+                      ) : (
+                        notifications.map(notif => {
+                          const badge = NOTIF_BADGE[notif.type] || { label: 'General', className: 'bg-slate-50 text-slate-600 border-slate-100' };
+                          return (
+                            <div
+                              key={notif.id}
+                              onClick={() => handleNotificationClick(notif)}
+                              className={`p-2.5 hover:bg-muted/50 rounded-xl transition-colors border border-border space-y-1 cursor-pointer ${!notif.isRead ? 'bg-purple-50/40 dark:bg-purple-500/5' : ''}`}
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className={`px-2 py-0.5 border text-[8px] font-bold rounded-full uppercase ${badge.className}`}>{badge.label}</span>
+                                <span className="text-[9px] text-slate-400 font-medium">{formatRelativeTime(notif.createdAt)}</span>
+                              </div>
+                              <p className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+                                {!notif.isRead && <span className="w-1.5 h-1.5 rounded-full bg-purple-650 shrink-0" />}
+                                {notif.title}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground leading-normal">{notif.message}</p>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <button className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100" title="Configuración">
               <Settings className="w-5 h-5" />
             </button>

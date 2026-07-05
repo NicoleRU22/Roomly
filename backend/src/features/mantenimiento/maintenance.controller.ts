@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
 import { saveBase64Image } from '../../core/utils/upload';
+import { notifyOwners, notifyInquilino } from '../notificaciones/notification.service';
 
 export const getTickets = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -109,6 +110,14 @@ export const createTicket = async (req: Request, res: Response): Promise<void> =
       }
     });
 
+    await notifyOwners(
+      tenantId,
+      'TICKET_CREADO',
+      'Nuevo ticket de mantenimiento',
+      `Se reportó "${title}" con prioridad ${(priority || 'MEDIA').toLowerCase()}.`,
+      '/mantenimiento'
+    );
+
     res.status(201).json(ticket);
   } catch (error) {
     console.error('Error en createTicket:', error);
@@ -147,6 +156,17 @@ export const updateTicketStatus = async (req: Request, res: Response): Promise<v
         cost: cost !== undefined ? parseFloat(cost) : existing.cost
       }
     });
+
+    if (status || comments !== undefined) {
+      await notifyInquilino(
+        tenantId,
+        existing.inquilinoId,
+        'TICKET_ACTUALIZADO',
+        'Actualización de tu ticket de mantenimiento',
+        comments ? `"${existing.title}": ${comments}` : `El estado de tu ticket "${existing.title}" cambió a ${(status || existing.status).replace('_', ' ').toLowerCase()}.`,
+        '/mantenimiento'
+      );
+    }
 
     res.json(updated);
   } catch (error) {

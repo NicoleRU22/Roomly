@@ -87,7 +87,8 @@ export const getMyInfo = async (req: Request, res: Response): Promise<void> => {
       propertyId: inquilino.propertyId || undefined,
       propertyName: inquilino.property?.name || undefined,
       roomId: inquilino.roomId || undefined,
-      roomNumber: inquilino.room?.roomNumber || undefined
+      roomNumber: inquilino.room?.roomNumber || undefined,
+      roomPrice: inquilino.room?.price || undefined
     });
 
   } catch (error) {
@@ -105,7 +106,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
     return;
   }
 
-  const { name, document, email, phone, status, propertyId, roomId, password } = req.body;
+  const { name, document, email, phone, status, propertyId, roomId, password, entryDate, contractMonths } = req.body;
 
   if (!name || !document || !email) {
     res.status(400).json({ error: 'Nombre, documento y correo son requeridos.' });
@@ -165,12 +166,14 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
       });
 
       // 4. Crear Contrato Borrador si se asignó un cuarto
+      let contractCreated = false;
       if (rId && roomObj) {
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setFullYear(startDate.getFullYear() + 1); // 1 año por defecto
+        const startDate = entryDate ? new Date(entryDate) : new Date();
+        const months = parseInt(contractMonths) || 12; // 12 meses por defecto
+        const endDate = new Date(startDate);
+        endDate.setMonth(startDate.getMonth() + months);
         const tenantRecordForContract = await tx.tenant.findUnique({ where: { id: tenantId } });
-        
+
         await tx.contrato.create({
           data: {
             tenantId,
@@ -184,18 +187,33 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
             acceptedTerms: false
           }
         });
+        contractCreated = true;
       }
 
       // 5. Crear Usuario para login si no existe
-      const existingUser = await tx.usuario.findUnique({ where: { email: normalizedEmail } });
-      if (!existingUser) {
-        await tx.usuario.create({
+      let tenantUser = await tx.usuario.findUnique({ where: { email: normalizedEmail } });
+      if (!tenantUser) {
+        tenantUser = await tx.usuario.create({
           data: {
             email: normalizedEmail,
             password: hashedPassword,
             firstName: name,
             role: 'INQUILINO',
             tenantId
+          }
+        });
+      }
+
+      // 6. Notificar al inquilino si se generó un contrato pendiente de firma
+      if (contractCreated && tenantUser) {
+        await tx.notification.create({
+          data: {
+            tenantId,
+            userId: tenantUser.id,
+            type: 'CONTRATO_PENDIENTE',
+            title: 'Contrato pendiente de firma',
+            message: `Tienes un contrato de arrendamiento para la habitación ${roomObj.roomNumber} en borrador. Por favor, revísalo y fírmalo.`,
+            link: '/contratos'
           }
         });
       }

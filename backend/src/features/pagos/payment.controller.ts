@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
 import { saveBase64Image } from '../../core/utils/upload';
+import { notifyOwners, notifyInquilino } from '../notificaciones/notification.service';
+import { generateRecurringInvoices } from './recurring.service';
 
 // Helper para calcular la mora
 const calculateDelay = (dueDateStr: Date | string): number => {
@@ -164,6 +166,15 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       }
     });
 
+    await notifyInquilino(
+      tenantId,
+      inqId,
+      'PAGO_GENERADO',
+      'Nuevo recibo emitido',
+      `Se generó un recibo de ${payment.paymentType === 'ALQUILER' ? 'alquiler' : 'servicio'} por S/. ${payment.amount.toFixed(2)}, con vencimiento el ${due.toLocaleDateString('es-PE')}.`,
+      '/pagos'
+    );
+
     res.status(201).json(payment);
   } catch (error) {
     console.error('Error en createPayment:', error);
@@ -216,6 +227,15 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
           receiptReference: receiptReference || existing.receiptReference
         }
       });
+
+      await notifyOwners(
+        tenantId,
+        'COMPROBANTE_PENDIENTE',
+        'Comprobante pendiente de validación',
+        `Se subió un comprobante de pago por S/. ${existing.amount.toFixed(2)} que requiere tu aprobación.`,
+        '/pagos'
+      );
+
       res.json(updated);
       return;
     }
@@ -293,6 +313,15 @@ export const approvePayment = async (req: Request, res: Response): Promise<void>
       }
     });
 
+    await notifyInquilino(
+      tenantId,
+      existing.inquilinoId,
+      'PAGO_APROBADO',
+      'Pago aprobado',
+      `Tu comprobante de pago por S/. ${totalToPay.toFixed(2)} fue validado y aprobado.`,
+      '/pagos'
+    );
+
     res.json(updated);
   } catch (error) {
     console.error('Error en approvePayment:', error);
@@ -330,10 +359,86 @@ export const rejectPayment = async (req: Request, res: Response): Promise<void> 
       }
     });
 
+    await notifyInquilino(
+      tenantId,
+      existing.inquilinoId,
+      'PAGO_RECHAZADO',
+      'Comprobante rechazado',
+      reason ? `Tu comprobante fue rechazado: ${reason}` : 'Tu comprobante fue rechazado. Por favor, sube uno nuevo.',
+      '/pagos'
+    );
+
     res.json(updated);
   } catch (error) {
     console.error('Error en rejectPayment:', error);
     res.status(500).json({ error: 'Error al rechazar el pago.' });
+  }
+};
+
+export const runRecurringInvoices = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. No tienes permisos para generar cobros recurrentes.' });
+    return;
+  }
+
+  try {
+    const result = await generateRecurringInvoices(tenantId);
+    res.json({ message: `Se generaron ${result.created} recibo(s) automáticamente.`, created: result.created });
+  } catch (error) {
+    console.error('Error en runRecurringInvoices:', error);
+    res.status(500).json({ error: 'Error al generar los cobros recurrentes.' });
+  }
+};
+
+export const sendDebtReminder = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+  const { inquilinoId } = req.params;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. No tienes permisos para enviar recordatorios.' });
+    return;
+  }
+
+  try {
+    const inqId = parseInt(inquilinoId as string);
+    const inquilino = await prisma.inquilino.findFirst({ where: { id: inqId, tenantId } });
+    if (!inquilino) {
+      res.status(404).json({ error: 'Inquilino no encontrado.' });
+      return;
+    }
+
+    const pendingPayments = await prisma.payment.findMany({
+      where: {
+        tenantId,
+        inquilinoId: inqId,
+        status: { notIn: ['PAGADO', 'CANCELADO'] }
+      }
+    });
+
+    if (pendingPayments.length === 0) {
+      res.status(400).json({ error: 'Este inquilino no tiene deudas pendientes.' });
+      return;
+    }
+
+    const totalDebt = pendingPayments.reduce((sum: number, p: any) => sum + ((p.amount - p.amountPaid) + p.delayPenalty), 0);
+
+    await notifyInquilino(
+      tenantId,
+      inqId,
+      'RECORDATORIO_DEUDA',
+      'Recordatorio de pago pendiente',
+      `Tienes una deuda acumulada de S/. ${totalDebt.toFixed(2)} en ${pendingPayments.length} recibo(s). Por favor, regulariza tus pagos pendientes.`,
+      '/pagos'
+    );
+
+    res.json({ message: 'Recordatorio enviado con éxito.', totalDebt });
+  } catch (error) {
+    console.error('Error en sendDebtReminder:', error);
+    res.status(500).json({ error: 'Error al enviar el recordatorio.' });
   }
 };
 

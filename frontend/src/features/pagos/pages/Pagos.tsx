@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, CheckCircle, XCircle, Search, RefreshCw } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
 import * as XLSX from 'xlsx';
@@ -99,6 +99,30 @@ export const Pagos: React.FC = () => {
   const [tenantPaymentsPage, setTenantPaymentsPage] = useState(1);
   const [ownerPaymentsPage, setOwnerPaymentsPage] = useState(1);
   const [debtsPage, setDebtsPage] = useState(1);
+
+  // Estados de Filtro/Búsqueda de Pagos (Propietario)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterType, setFilterType] = useState('');
+
+  // Estados de Selección/Acciones Masivas (Propietario)
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<Set<number>>(new Set());
+  const [selectedValidationIds, setSelectedValidationIds] = useState<Set<number>>(new Set());
+  const [selectedDebtIds, setSelectedDebtIds] = useState<Set<number>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [runningRecurring, setRunningRecurring] = useState(false);
+
+  const toggleSelection = (setFn: React.Dispatch<React.SetStateAction<Set<number>>>, id: number) => {
+    setFn(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (setFn: React.Dispatch<React.SetStateAction<Set<number>>>, ids: number[], allSelected: boolean) => {
+    setFn(allSelected ? new Set() : new Set(ids));
+  };
 
   const getApiUrl = () => {
     return import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -419,9 +443,9 @@ export const Pagos: React.FC = () => {
     printWindow.document.close();
   };
 
-  // Exportar reporte de pagos como archivo Excel
-  const handleExportPayments = () => {
-    const rows = payments.map(p => ({
+  // Exportar reporte de pagos como archivo Excel (todos, o solo los seleccionados si se pasa una lista)
+  const handleExportPayments = (list: Payment[] = payments) => {
+    const rows = list.map(p => ({
       ID: p.id,
       Inquilino: p.inquilinoName,
       Habitacion: p.roomNumber || 'N/A',
@@ -513,13 +537,40 @@ export const Pagos: React.FC = () => {
   const pendingValidationsCount = payments.filter(p => p.receiptStatus === 'PENDIENTE' && p.receiptImageUrl).length;
   const tenantDebts = getTenantDebts();
 
+  // Filtrado de Pagos para Propietario
+  const filteredPayments = payments.filter(p => {
+    const matchesSearch = p.inquilinoName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (p.roomNumber && p.roomNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (p.receiptReference && p.receiptReference.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (p.paymentType && p.paymentType.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesStatus = filterStatus === '' || p.status === filterStatus;
+    const matchesType = filterType === '' || p.paymentType === filterType;
+    return matchesSearch && matchesStatus && matchesType;
+  });
+
+  const filteredValidations = filteredPayments.filter(p => p.receiptStatus === 'PENDIENTE' && p.receiptImageUrl);
+
+  const filteredDebts = tenantDebts.filter(d => {
+    const matchesSearch = d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (d.roomNumber && d.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()));
+    return matchesSearch;
+  });
+
   const tenantPaymentsTotalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
-  const ownerPaymentsTotalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
-  const debtsTotalPages = Math.max(1, Math.ceil(tenantDebts.length / PAGE_SIZE));
+  const ownerPaymentsTotalPages = Math.max(
+    1, 
+    Math.ceil((activeTab === 'recibos' ? filteredPayments.length : activeTab === 'validaciones' ? filteredValidations.length : filteredDebts.length) / PAGE_SIZE)
+  );
+  const debtsTotalPages = Math.max(1, Math.ceil(filteredDebts.length / PAGE_SIZE));
 
   const paginatedTenantPayments = payments.slice((tenantPaymentsPage - 1) * PAGE_SIZE, tenantPaymentsPage * PAGE_SIZE);
-  const paginatedOwnerPayments = payments.slice((ownerPaymentsPage - 1) * PAGE_SIZE, ownerPaymentsPage * PAGE_SIZE);
-  const paginatedTenantDebts = tenantDebts.slice((debtsPage - 1) * PAGE_SIZE, debtsPage * PAGE_SIZE);
+  
+  const paginatedOwnerPayments = activeTab === 'recibos'
+    ? filteredPayments.slice((ownerPaymentsPage - 1) * PAGE_SIZE, ownerPaymentsPage * PAGE_SIZE)
+    : filteredValidations.slice((ownerPaymentsPage - 1) * PAGE_SIZE, ownerPaymentsPage * PAGE_SIZE);
+    
+  const paginatedTenantDebts = filteredDebts.slice((debtsPage - 1) * PAGE_SIZE, debtsPage * PAGE_SIZE);
 
   useEffect(() => {
     if (tenantPaymentsPage > tenantPaymentsTotalPages) setTenantPaymentsPage(tenantPaymentsTotalPages);
@@ -530,7 +581,74 @@ export const Pagos: React.FC = () => {
   useEffect(() => {
     setOwnerPaymentsPage(1);
     setDebtsPage(1);
+    setSelectedPaymentIds(new Set());
+    setSelectedValidationIds(new Set());
+    setSelectedDebtIds(new Set());
   }, [activeTab]);
+
+  // Marcar como pagado completo (mora + saldo) los recibos seleccionados
+  const handleBulkMarkPaid = async () => {
+    if (selectedPaymentIds.size === 0) return;
+    setBulkProcessing(true);
+    try {
+      await Promise.all(Array.from(selectedPaymentIds).map(id => {
+        const pay = payments.find(p => p.id === id);
+        if (!pay || pay.status === 'PAGADO' || pay.status === 'CANCELADO') return Promise.resolve();
+        const pending = (pay.amount - pay.amountPaid) + pay.delayPenalty;
+        return api.put(`/payments/${id}/record`, { amountToAdd: pending });
+      }));
+      setSelectedPaymentIds(new Set());
+      fetchPaymentsAndInquilinos();
+    } catch (err: any) {
+      setError('Error al marcar los recibos seleccionados como pagados.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  // Aprobar en bloque los comprobantes seleccionados
+  const handleBulkApproveValidations = async () => {
+    if (selectedValidationIds.size === 0) return;
+    setBulkProcessing(true);
+    try {
+      await Promise.all(Array.from(selectedValidationIds).map(id => api.put(`/payments/${id}/approve`)));
+      setSelectedValidationIds(new Set());
+      fetchPaymentsAndInquilinos();
+    } catch (err: any) {
+      setError('Error al aprobar los comprobantes seleccionados.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  // Forzar la generación de recibos de alquiler recurrentes (normalmente corre solo, 1 vez al día)
+  const handleRunRecurring = async () => {
+    setRunningRecurring(true);
+    try {
+      const res = await api.post('/payments/generate-recurring');
+      alert(res.data.message);
+      fetchPaymentsAndInquilinos();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Error al generar los cobros recurrentes.');
+    } finally {
+      setRunningRecurring(false);
+    }
+  };
+
+  // Enviar recordatorio de deuda a los inquilinos seleccionados
+  const handleBulkRemindDebts = async () => {
+    if (selectedDebtIds.size === 0) return;
+    setBulkProcessing(true);
+    try {
+      await Promise.all(Array.from(selectedDebtIds).map(id => api.post(`/payments/remind-debt/${id}`)));
+      setSelectedDebtIds(new Set());
+      alert('Recordatorios enviados con éxito.');
+    } catch (err: any) {
+      setError('Error al enviar los recordatorios seleccionados.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
 
   if (loading && payments.length === 0) {
     return (
@@ -851,7 +969,16 @@ export const Pagos: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleExportPayments}
+            onClick={handleRunRecurring}
+            disabled={runningRecurring}
+            title="Los recibos de alquiler se generan solos cada día; usa esto para forzarlo ahora"
+            className="flex items-center py-2 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${runningRecurring ? 'animate-spin' : ''}`} />
+            {runningRecurring ? 'Generando...' : 'Generar Cobros del Mes'}
+          </button>
+          <button
+            onClick={() => handleExportPayments()}
             className="flex items-center py-2 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all shadow-sm"
           >
             <Download className="w-3.5 h-3.5 mr-1.5" />
@@ -948,13 +1075,123 @@ export const Pagos: React.FC = () => {
         </button>
       </div>
 
+      {/* SECCIÓN DE FILTROS BÚSQUEDA DE PAGOS */}
+      {!isTenant && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Búsqueda General</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar Inquilino, Habitación, Ref..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setOwnerPaymentsPage(1);
+                  setDebtsPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-purple-650"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Estado Pago</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setOwnerPaymentsPage(1);
+              }}
+              className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-purple-650"
+            >
+              <option value="">Todos los estados</option>
+              <option value="PENDIENTE">PENDIENTE</option>
+              <option value="PAGADO">PAGADO</option>
+              <option value="PAGADO_PARCIAL">PAGADO_PARCIAL</option>
+              <option value="VENCIDO">VENCIDO</option>
+              <option value="CANCELADO">CANCELADO</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Tipo de Pago</label>
+            <select
+              value={filterType}
+              onChange={(e) => {
+                setFilterType(e.target.value);
+                setOwnerPaymentsPage(1);
+              }}
+              className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-purple-650"
+            >
+              <option value="">Todos los tipos</option>
+              <option value="ALQUILER">ALQUILER</option>
+              <option value="SERVICIO">SERVICIO</option>
+            </select>
+          </div>
+
+          <div>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setFilterStatus('');
+                setFilterType('');
+                setOwnerPaymentsPage(1);
+                setDebtsPage(1);
+              }}
+              className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all"
+            >
+              Limpiar Filtros
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* CONTENIDO DE TAB RECIBOS (PROPIETARIO) */}
       {activeTab === 'recibos' && (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="space-y-3">
+          {selectedPaymentIds.size > 0 && (
+            <div className="flex items-center justify-between gap-3 bg-purple-50 border border-purple-150 rounded-2xl px-5 py-3">
+              <span className="text-xs font-bold text-purple-700">{selectedPaymentIds.size} recibo(s) seleccionado(s)</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportPayments(payments.filter(p => selectedPaymentIds.has(p.id)))}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Exportar seleccionados
+                </button>
+                <button
+                  onClick={handleBulkMarkPaid}
+                  disabled={bulkProcessing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  {bulkProcessing ? 'Procesando...' : 'Marcar como pagado'}
+                </button>
+                <button
+                  onClick={() => setSelectedPaymentIds(new Set())}
+                  className="text-xs font-bold text-slate-500 hover:underline px-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse border border-slate-200">
               <thead>
                 <tr className="bg-[#DFCEFC] text-sm text-slate-800 font-bold border-b border-slate-200">
+                  <th className="px-4 py-4 border-r border-slate-200 w-10">
+                    <input
+                      type="checkbox"
+                      checked={paginatedOwnerPayments.length > 0 && paginatedOwnerPayments.every(p => selectedPaymentIds.has(p.id))}
+                      onChange={() => toggleSelectAll(setSelectedPaymentIds, paginatedOwnerPayments.map(p => p.id), paginatedOwnerPayments.length > 0 && paginatedOwnerPayments.every(p => selectedPaymentIds.has(p.id)))}
+                      className="w-4 h-4 accent-purple-650 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-6 py-4 border-r border-slate-200">Inquilino</th>
                   <th className="px-6 py-4 border-r border-slate-200">Monto</th>
                   <th className="px-6 py-4 border-r border-slate-200">Mora</th>
@@ -965,10 +1202,10 @@ export const Pagos: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-slate-700 bg-white">
-                {payments.length === 0 ? (
+                {filteredPayments.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-slate-400">
-                      No hay recibos de pagos generados aún.
+                    <td colSpan={8} className="text-center py-12 text-slate-400">
+                      No hay recibos de pagos que coincidan con la búsqueda.
                     </td>
                   </tr>
                 ) : (
@@ -988,6 +1225,14 @@ export const Pagos: React.FC = () => {
 
                     return (
                       <tr key={pay.id} className="hover:bg-slate-50/30 transition-colors border-b border-slate-200 last:border-0">
+                        <td className="px-4 py-4 border-r border-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={selectedPaymentIds.has(pay.id)}
+                            onChange={() => toggleSelection(setSelectedPaymentIds, pay.id)}
+                            className="w-4 h-4 accent-purple-650 cursor-pointer"
+                          />
+                        </td>
                         {/* Inquilino (Clickeable abre timeline) */}
                         <td className="px-6 py-4 border-r border-slate-200 font-bold text-purple-650 hover:underline cursor-pointer" onClick={() => handleOpenTimeline(pay.inquilinoId, pay.inquilinoName)}>
                           {pay.inquilinoName}
@@ -1079,27 +1324,55 @@ export const Pagos: React.FC = () => {
           </div>
           <Pagination
             currentPage={ownerPaymentsPage}
-            totalItems={payments.length}
+            totalItems={activeTab === 'recibos' ? filteredPayments.length : filteredValidations.length}
             pageSize={PAGE_SIZE}
             onPageChange={setOwnerPaymentsPage}
             itemLabel="recibos"
           />
+          </div>
         </div>
       )}
 
       {/* VALIDACION DE COMPROBANTES */}
       {activeTab === 'validaciones' && (
         <div className="space-y-4">
-          {payments.filter(p => p.receiptStatus === 'PENDIENTE' && p.receiptImageUrl).length === 0 ? (
+          {selectedValidationIds.size > 0 && (
+            <div className="flex items-center justify-between gap-3 bg-purple-50 border border-purple-150 rounded-2xl px-5 py-3">
+              <span className="text-xs font-bold text-purple-700">{selectedValidationIds.size} comprobante(s) seleccionado(s)</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBulkApproveValidations}
+                  disabled={bulkProcessing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {bulkProcessing ? 'Procesando...' : 'Aprobar seleccionados'}
+                </button>
+                <button
+                  onClick={() => setSelectedValidationIds(new Set())}
+                  className="text-xs font-bold text-slate-500 hover:underline px-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          {filteredValidations.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
               <CheckCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="font-bold text-slate-500 text-sm">No hay comprobantes pendientes de validación.</p>
+              <p className="font-bold text-slate-500 text-sm">No hay comprobantes pendientes de validación que coincidan.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {payments.filter(p => p.receiptStatus === 'PENDIENTE' && p.receiptImageUrl).map((pay) => (
-                <div key={pay.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 flex flex-col md:flex-row gap-5">
-                  <div 
+              {filteredValidations.map((pay) => (
+                <div key={pay.id} className={`bg-white border rounded-2xl shadow-sm p-5 flex flex-col md:flex-row gap-5 relative ${selectedValidationIds.has(pay.id) ? 'border-purple-400 ring-1 ring-purple-200' : 'border-slate-200'}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedValidationIds.has(pay.id)}
+                    onChange={() => toggleSelection(setSelectedValidationIds, pay.id)}
+                    className="absolute top-4 right-4 w-4 h-4 accent-purple-650 cursor-pointer z-10"
+                  />
+                  <div
                     onClick={() => setLightboxImageUrl(getImageUrl(pay.receiptImageUrl))}
                     className="w-full md:w-32 h-44 bg-slate-50 border border-slate-200 rounded-xl overflow-hidden cursor-pointer relative group flex items-center justify-center flex-shrink-0"
                   >
@@ -1173,11 +1446,45 @@ export const Pagos: React.FC = () => {
 
       {/* DEUDAS POR INQUILINO */}
       {activeTab === 'deudas' && (
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="space-y-3">
+          {selectedDebtIds.size > 0 && (
+            <div className="flex items-center justify-between gap-3 bg-purple-50 border border-purple-150 rounded-2xl px-5 py-3">
+              <span className="text-xs font-bold text-purple-700">{selectedDebtIds.size} inquilino(s) seleccionado(s)</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBulkRemindDebts}
+                  disabled={bulkProcessing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#A855F7] hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {bulkProcessing ? 'Enviando...' : 'Enviar recordatorio'}
+                </button>
+                <button
+                  onClick={() => setSelectedDebtIds(new Set())}
+                  className="text-xs font-bold text-slate-500 hover:underline px-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse border border-slate-200">
               <thead>
                 <tr className="bg-[#DFCEFC] text-sm text-slate-800 font-bold border-b border-slate-200">
+                  <th className="px-4 py-4 border-r border-slate-200 w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredDebts.some(d => d.totalDebt > 0) && filteredDebts.filter(d => d.totalDebt > 0).every(d => selectedDebtIds.has(d.id))}
+                      onChange={() => {
+                        const debtIds = filteredDebts.filter(d => d.totalDebt > 0).map(d => d.id);
+                        const allSelected = debtIds.length > 0 && debtIds.every(id => selectedDebtIds.has(id));
+                        toggleSelectAll(setSelectedDebtIds, debtIds, allSelected);
+                      }}
+                      className="w-4 h-4 accent-purple-650 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-6 py-4 border-r border-slate-200">Inquilino</th>
                   <th className="px-6 py-4 border-r border-slate-200">Habitación</th>
                   <th className="px-6 py-4 border-r border-slate-200">Recibos Pendientes</th>
@@ -1186,10 +1493,10 @@ export const Pagos: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-sm text-slate-700 bg-white">
-                {tenantDebts.length === 0 ? (
+                {filteredDebts.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-slate-400">
-                      No hay inquilinos registrados.
+                    <td colSpan={6} className="text-center py-12 text-slate-400">
+                      No hay inquilinos con deudas activas que coincidan.
                     </td>
                   </tr>
                 ) : (
@@ -1215,6 +1522,15 @@ export const Pagos: React.FC = () => {
 
                     return (
                       <tr key={inqDebt.id} className="hover:bg-slate-50/30 transition-colors border-b border-slate-200 last:border-0">
+                        <td className="px-4 py-4 border-r border-slate-200">
+                          <input
+                            type="checkbox"
+                            disabled={inqDebt.totalDebt <= 0}
+                            checked={selectedDebtIds.has(inqDebt.id)}
+                            onChange={() => toggleSelection(setSelectedDebtIds, inqDebt.id)}
+                            className="w-4 h-4 accent-purple-650 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          />
+                        </td>
                         <td className="px-6 py-4 font-bold text-slate-800 border-r border-slate-200">
                           {inqDebt.name}
                         </td>
@@ -1239,11 +1555,12 @@ export const Pagos: React.FC = () => {
           </div>
           <Pagination
             currentPage={debtsPage}
-            totalItems={tenantDebts.length}
+            totalItems={filteredDebts.length}
             pageSize={PAGE_SIZE}
             onPageChange={setDebtsPage}
             itemLabel="inquilinos"
           />
+          </div>
         </div>
       )}
 

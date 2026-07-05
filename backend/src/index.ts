@@ -10,6 +10,8 @@ import paymentRoutes from './features/pagos/payment.routes';
 import servicioRoutes from './features/servicios/servicio.routes';
 import contractRoutes from './features/contratos/contract.routes';
 import maintenanceRoutes from './features/mantenimiento/maintenance.routes';
+import notificationRoutes from './features/notificaciones/notification.routes';
+import { generateRecurringInvoices } from './features/pagos/recurring.service';
 
 dotenv.config();
 
@@ -63,6 +65,7 @@ app.use('/api', paymentRoutes);
 app.use('/api', servicioRoutes);
 app.use('/api', contractRoutes);
 app.use('/api', maintenanceRoutes);
+app.use('/api', notificationRoutes);
 
 // Ruta de Salud/Prueba
 app.get('/health', (req: Request, res: Response) => {
@@ -95,6 +98,18 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Roomly API iniciado en http://localhost:${PORT}`);
+
+  // Generación automática de recibos de alquiler recurrentes: al iniciar y luego cada 24h
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const runRecurringInvoicesJob = () => {
+    generateRecurringInvoices()
+      .then(({ created }) => {
+        if (created > 0) console.log(`[Cron] Recibos recurrentes generados automáticamente: ${created}`);
+      })
+      .catch((err) => console.error('[Cron] Error generando recibos recurrentes:', err));
+  };
+  runRecurringInvoicesJob();
+  setInterval(runRecurringInvoicesJob, DAY_MS);
 });
 
 // Trigger reload for Prisma client update

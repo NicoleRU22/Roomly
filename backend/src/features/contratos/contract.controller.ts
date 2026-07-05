@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
 import { saveBase64Image } from '../../core/utils/upload';
+import { notifyOwners, notifyInquilino } from '../notificaciones/notification.service';
 
 export const getContratos = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -131,6 +132,46 @@ export const updateContrato = async (req: Request, res: Response): Promise<void>
   }
 };
 
+export const getRoomAvailability = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const { roomId } = req.params;
+
+  try {
+    const rId = parseInt(roomId as string);
+    const room = await prisma.room.findFirst({ where: { id: rId, tenantId } });
+    if (!room) {
+      res.status(404).json({ error: 'Habitación no encontrada.' });
+      return;
+    }
+
+    const contratos = await prisma.contrato.findMany({
+      where: {
+        roomId: rId,
+        tenantId,
+        status: { not: 'CANCELADO' }
+      },
+      include: { inquilino: true },
+      orderBy: { startDate: 'asc' }
+    });
+
+    res.json({
+      roomId: room.id,
+      roomNumber: room.roomNumber,
+      roomStatus: room.status,
+      occupiedRanges: contratos.map((c: any) => ({
+        contratoId: c.id,
+        inquilinoName: c.inquilino.name,
+        startDate: c.startDate.toISOString().split('T')[0],
+        endDate: c.endDate.toISOString().split('T')[0],
+        status: c.status
+      }))
+    });
+  } catch (error) {
+    console.error('Error en getRoomAvailability:', error);
+    res.status(500).json({ error: 'Error al obtener la disponibilidad de la habitación.' });
+  }
+};
+
 export const consultarRucSunat = async (req: Request, res: Response): Promise<void> => {
   const { ruc } = req.params;
   const cleanRuc = String(ruc || '').replace(/\D/g, '');
@@ -235,7 +276,15 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
           status: 'VIGENTE'
         }
       });
-  
+
+      await notifyOwners(
+        tenantId,
+        'CONTRATO_FIRMADO',
+        'Contrato firmado',
+        `${contrato.inquilino.name} firmó el contrato de arrendamiento de la habitación.`,
+        '/contratos'
+      );
+
       res.json(updated);
     } catch (error) {
       console.error('Error en signContrato:', error);
@@ -293,7 +342,16 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
           }
         })
       ]);
-  
+
+      await notifyInquilino(
+        tenantId,
+        existing.inquilinoId,
+        'CONTRATO_PENDIENTE',
+        'Renovación de contrato pendiente de firma',
+        'Se generó un nuevo contrato de renovación. Por favor, revísalo y fírmalo.',
+        '/contratos'
+      );
+
       res.status(201).json(newContrato);
     } catch (error) {
       console.error('Error en renewContrato:', error);

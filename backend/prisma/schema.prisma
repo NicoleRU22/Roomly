@@ -7,28 +7,30 @@ generator client {
 }
 
 model Tenant {
-  id          Int                 @id @default(autoincrement())
-  slug        String              @unique
-  companyName String              @map("company_name")
-  usuarios    Usuario[]
-  properties  Property[]
-  rooms       Room[]
-  inquilinos  Inquilino[]
-  payments    Payment[]
-  servicios   Servicio[]
-  contratos   Contrato[]
-  tickets     MaintenanceTicket[]
+  id            Int                 @id @default(autoincrement())
+  slug          String              @unique
+  companyName   String              @map("company_name")
+  usuarios      Usuario[]
+  properties    Property[]
+  rooms         Room[]
+  inquilinos    Inquilino[]
+  payments      Payment[]
+  servicios     Servicio[]
+  contratos     Contrato[]
+  tickets       MaintenanceTicket[]
+  notifications Notification[]
 }
 
 model Usuario {
-  id        Int     @id @default(autoincrement())
-  email     String  @unique
-  password  String
-  firstName String
-  lastName  String?
-  role      String  // "PROPIETARIO" o "INQUILINO"
-  tenantId  Int
-  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id            Int             @id @default(autoincrement())
+  email         String          @unique
+  password      String
+  firstName     String
+  lastName      String?
+  role          String          // "PROPIETARIO" o "INQUILINO"
+  tenantId      Int
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  notifications Notification[]
 }
 
 model Property {
@@ -158,4 +160,21 @@ model MaintenanceTicket {
   cost        Float?    // Costo de reparación
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    Int
+  usuario   Usuario  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // "PAGO_GENERADO", "PAGO_APROBADO", "PAGO_RECHAZADO", "COMPROBANTE_PENDIENTE", "CONTRATO_PENDIENTE", "CONTRATO_FIRMADO", "TICKET_CREADO", "TICKET_ACTUALIZADO"
+  title     String
+  message   String
+  link      String?  // Ruta relativa del frontend a la que navega, ej. "/pagos"
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([tenantId])
 }

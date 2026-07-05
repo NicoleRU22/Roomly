@@ -101,6 +101,8 @@ export const Inquilinos: React.FC = () => {
   const [status, setStatus] = useState('ACTIVO');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
+  const [entryDate, setEntryDate] = useState<string>('');
+  const [contractMonths, setContractMonths] = useState<string>('12');
 
   // Estados Modal Mostrar Credenciales Creadas
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
@@ -252,6 +254,8 @@ export const Inquilinos: React.FC = () => {
     setStatus('ACTIVO');
     setSelectedPropertyId('');
     setSelectedRoomId('');
+    setEntryDate(getTodayIso());
+    setContractMonths('12');
     setShowModal(true);
   };
 
@@ -268,6 +272,8 @@ export const Inquilinos: React.FC = () => {
     setStatus(inq.status);
     setSelectedPropertyId(inq.propertyId ? String(inq.propertyId) : '');
     setSelectedRoomId(inq.roomId ? String(inq.roomId) : '');
+    setEntryDate(getTodayIso());
+    setContractMonths('12');
     setShowModal(true);
   };
 
@@ -287,7 +293,9 @@ export const Inquilinos: React.FC = () => {
       phone: normalizedPhone,
       status,
       propertyId: selectedPropertyId ? parseInt(selectedPropertyId) : null,
-      roomId: selectedRoomId ? parseInt(selectedRoomId) : null
+      roomId: selectedRoomId ? parseInt(selectedRoomId) : null,
+      entryDate: entryDate || undefined,
+      contractMonths: contractMonths ? parseInt(contractMonths) : undefined
     };
 
     try {
@@ -329,6 +337,15 @@ export const Inquilinos: React.FC = () => {
     } catch (err: any) {
       alert(err.response?.data?.error || 'Error al eliminar el inquilino.');
     }
+  };
+
+  // Fecha actual en formato YYYY-MM-DD (hora local)
+  const getTodayIso = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   // Mapear fecha de entrada determinística
@@ -909,11 +926,26 @@ export const Inquilinos: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-500 mb-1.5">Fecha de entrada</label>
                   <input
                     type="date"
+                    value={entryDate}
+                    onChange={(e) => setEntryDate(e.target.value)}
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
-                    defaultValue="2026-05-27"
                   />
                 </div>
               </div>
+
+              {!editingId && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1.5">Duración del contrato (meses)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="ej. 12"
+                    value={contractMonths}
+                    onChange={(e) => setContractMonths(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
+                  />
+                </div>
+              )}
 
               {/* ACCIONES */}
               <div className="grid grid-cols-2 gap-4 pt-3">

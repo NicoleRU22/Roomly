@@ -1,1 +1,16 @@
-Nothing needs to be added to .gitignore since only a README.md file was added, which is a source/config file and not a build artifact, dependency, or temporary file.
+node_modules
+
+# Scripts de debug/temporales usados durante desarrollo local
+backend/tmp-*.js
+backend/tmp-*.mjs
+backend/src/check-users.ts
+
+# Contenido subido por usuarios en tiempo de ejecución (comprobantes, firmas, fotos)
+backend/uploads/
+
+# Documentos personales / de curso, no forman parte del código
+*.docx
+_apf3_work/
+
+# Lockfile de npm accidental (el proyecto usa pnpm)
+/package-lock.json

@@ -39,6 +39,7 @@ interface InquilinoInfo {
   propertyName?: string;
   roomId?: number;
   roomNumber?: string;
+  roomPrice?: number;
 }
 
 interface Payment {
@@ -75,12 +76,19 @@ export const Dashboard: React.FC = () => {
   // Estados de Propietario (Admin)
   const [properties, setProperties] = useState<Property[]>([]);
   const [activeTenants, setActiveTenants] = useState(0);
+  const [totalInquilinos, setTotalInquilinos] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(true);
   const [monthlyRevenue, setMonthlyRevenue] = useState(0); // Recaudado
   const [projectedRevenue, setProjectedRevenue] = useState(0); // Proyectado
   const [occupancyRate, setOccupancyRate] = useState(0); // Ocupación Global
   const [allPayments, setAllPayments] = useState<Payment[]>([]); // Pagos para alertas de mora
   const [urgentTickets, setUrgentTickets] = useState<any[]>([]); // Incidencias pendientes urgentes
   const [deletePropertyId, setDeletePropertyId] = useState<number | null>(null);
+
+  // Estados de Habitaciones y Gráficos Visuales
+  const [availableRoomsCount, setAvailableRoomsCount] = useState(0);
+  const [maintenanceRoomsCount, setMaintenanceRoomsCount] = useState(0);
+  const [totalRoomsCount, setTotalRoomsCount] = useState(0);
 
   // Estados de Inquilino (Resident)
   const [inquilinoInfo, setInquilinoInfo] = useState<InquilinoInfo | null>(null);
@@ -134,6 +142,8 @@ export const Dashboard: React.FC = () => {
         // Calcular KPIs de Ocupación
         let totalRooms = 0;
         let occupiedRooms = 0;
+        let availableRooms = 0;
+        let maintenanceRooms = 0;
         let projected = 0;
 
         props.forEach((p: any) => {
@@ -143,6 +153,10 @@ export const Dashboard: React.FC = () => {
               if (r.status === 'Ocupado') {
                 occupiedRooms++;
                 projected += r.price; // Ingreso proyectado por cuarto alquilado
+              } else if (r.status === 'Disponible') {
+                availableRooms++;
+              } else if (r.status === 'Mantenimiento') {
+                maintenanceRooms++;
               }
             });
           }
@@ -158,9 +172,13 @@ export const Dashboard: React.FC = () => {
 
         setProperties(props);
         setActiveTenants(activeCount);
+        setTotalInquilinos(inqs.length);
         setMonthlyRevenue(collected);
         setProjectedRevenue(projected);
         setOccupancyRate(globalOccupancy);
+        setAvailableRoomsCount(availableRooms);
+        setMaintenanceRoomsCount(maintenanceRooms);
+        setTotalRoomsCount(totalRooms);
         setAllPayments(pays);
         setUrgentTickets(ticketsList.filter((t: any) => t.status === 'PENDIENTE' && t.priority === 'ALTA'));
       }
@@ -306,7 +324,7 @@ export const Dashboard: React.FC = () => {
             <div className="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4 text-xs">
               <div className="space-y-1">
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Mensualidad</span>
-                <p className="font-extrabold text-slate-800">S/. 550.00</p>
+                <p className="font-extrabold text-slate-800">S/. {(inquilinoInfo?.roomPrice ?? 0).toFixed(2)}</p>
               </div>
               <div className="space-y-1">
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Documento</span>
@@ -491,8 +509,81 @@ export const Dashboard: React.FC = () => {
   // ==========================================
   // RENDER PANEL DE PROPIETARIO
   // ==========================================
+  const onboardingSteps = [
+    {
+      label: 'Crea tu primera propiedad',
+      description: 'Registra el edificio, casa o inmueble que vas a administrar.',
+      done: properties.length > 0,
+      path: `/${tenant}/propiedades`
+    },
+    {
+      label: 'Agrega cuartos o habitaciones',
+      description: 'Define las unidades disponibles dentro de tu propiedad y su precio.',
+      done: totalRoomsCount > 0,
+      path: `/${tenant}/propiedades`
+    },
+    {
+      label: 'Agrega tu primer inquilino',
+      description: 'Registra a la persona que ocupará una habitación disponible.',
+      done: totalInquilinos > 0,
+      path: `/${tenant}/inquilinos`
+    },
+    {
+      label: 'Genera tu primer cobro',
+      description: 'Crea la orden de cobro mensual para empezar a recaudar.',
+      done: allPayments.length > 0,
+      path: `/${tenant}/pagos`
+    }
+  ];
+  const onboardingAllDone = onboardingSteps.every(s => s.done);
+  const nextStep = onboardingSteps.find(s => !s.done);
+
   return (
     <div className="space-y-8">
+      {/* GUÍA DE INICIO PARA PROPIETARIOS NUEVOS */}
+      {!onboardingAllDone && showOnboarding && (
+        <div className="bg-gradient-to-r from-purple-50 to-white border border-purple-150 rounded-3xl p-6 space-y-5 relative">
+          <button
+            onClick={() => setShowOnboarding(false)}
+            className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-xs font-bold"
+            title="Ocultar guía"
+          >
+            ✕
+          </button>
+          <div>
+            <h3 className="text-sm font-black text-purple-700 uppercase tracking-wider">Primeros pasos en Roomly</h3>
+            <p className="text-xs text-slate-500 mt-1">Sigue esta guía para dejar tu cuenta lista y empezar a recibir pagos.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {onboardingSteps.map((step, idx) => (
+              <div
+                key={step.label}
+                className={`p-4 rounded-2xl border space-y-2 ${step.done ? 'bg-emerald-50 border-emerald-150' : 'bg-white border-slate-200'}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${step.done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {step.done ? '✓' : idx + 1}
+                  </span>
+                  {step === nextStep && (
+                    <span className="text-[9px] font-bold text-purple-650 uppercase bg-purple-50 border border-purple-100 rounded-full px-2 py-0.5">Siguiente</span>
+                  )}
+                </div>
+                <p className={`text-xs font-bold ${step.done ? 'text-emerald-700' : 'text-slate-800'}`}>{step.label}</p>
+                <p className="text-[10px] text-slate-400 leading-normal">{step.description}</p>
+                {!step.done && (
+                  <Link
+                    to={step.path}
+                    className="inline-block text-[10px] font-bold text-purple-650 hover:underline"
+                  >
+                    Ir ahora →
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 4 TARJETAS DE MÉTRICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Métrica 1: Ocupación Global */}
@@ -527,15 +618,144 @@ export const Dashboard: React.FC = () => {
             <CreditCard className="w-6 h-6" />
           </div>
         </div>
+      </div>
 
-        {/* Métrica 4: Inquilinos activos */}
-        <div className="bg-white border border-slate-200 p-6 rounded-3xl flex items-center justify-between shadow-sm">
-          <div className="space-y-1">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Inquilinos activos</p>
-            <h3 className="text-3xl font-extrabold text-slate-900">{activeTenants}</h3>
+      {/* SECCIÓN ANALÍTICAS Y RENDIMIENTO (GRÁFICOS SVG PREMIUM) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico 1: Balance de Ingresos (Bar Chart SVG) */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-between space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Balance Mensual</h3>
+              <p className="text-xs text-slate-400 mt-1">Comparativa de ingresos reales vs proyectados.</p>
+            </div>
+            {/* Tasa de Cobranza Badge */}
+            <div className="px-3 py-1 bg-purple-50 text-purple-600 border border-purple-100 rounded-xl text-[10px] font-bold">
+              Eficacia: {projectedRevenue > 0 ? Math.round((monthlyRevenue / projectedRevenue) * 100) : 0}%
+            </div>
           </div>
-          <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center border border-purple-100 shadow-sm">
-            <Users className="w-6 h-6" />
+
+          {/* Bar Chart SVG */}
+          <div className="h-44 w-full flex items-end justify-around relative pt-6 border-b border-slate-100">
+            {/* Y Axis Grid Lines */}
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[8px] font-bold text-slate-350 dark:text-slate-500 pb-1 pt-4">
+              <div className="border-t border-slate-100 dark:border-slate-800/50 w-full pt-1">
+                S/. {Math.max(monthlyRevenue, projectedRevenue).toFixed(0)}
+              </div>
+              <div className="border-t border-slate-100 dark:border-slate-800/50 w-full pt-1">
+                S/. {(Math.max(monthlyRevenue, projectedRevenue) / 2).toFixed(0)}
+              </div>
+              <div className="w-full">S/. 0.00</div>
+            </div>
+
+            {/* Bars */}
+            {/* 1. Bar for Collected (Vibrant Purple Gradient) */}
+            <div className="flex flex-col items-center z-10 w-24 space-y-2 group">
+              <div className="relative w-12 flex justify-center items-end h-32">
+                {/* Tooltip on Hover */}
+                <div className="absolute -top-7 px-2 py-0.5 bg-purple-950 text-white rounded text-[9px] font-mono font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-md z-20">
+                  S/. {monthlyRevenue.toFixed(2)}
+                </div>
+                <div 
+                  className="w-full bg-gradient-to-t from-purple-750 to-purple-500 rounded-t-xl transition-all duration-1000 ease-out"
+                  style={{ height: `${projectedRevenue > 0 || monthlyRevenue > 0 ? Math.round((monthlyRevenue / Math.max(monthlyRevenue, projectedRevenue || 1)) * 100) : 0}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Recaudado</span>
+            </div>
+
+            {/* 2. Bar for Projected (Slate / Lighter Gradient) */}
+            <div className="flex flex-col items-center z-10 w-24 space-y-2 group">
+              <div className="relative w-12 flex justify-center items-end h-32">
+                {/* Tooltip on Hover */}
+                <div className="absolute -top-7 px-2 py-0.5 bg-slate-800 text-white rounded text-[9px] font-mono font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-md z-20">
+                  S/. {projectedRevenue.toFixed(2)}
+                </div>
+                <div 
+                  className="w-full bg-slate-200 dark:bg-slate-800 rounded-t-xl transition-all duration-1000 ease-out"
+                  style={{ height: `${projectedRevenue > 0 || monthlyRevenue > 0 ? Math.round((projectedRevenue / Math.max(monthlyRevenue, projectedRevenue || 1)) * 100) : 0}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Meta Mensual</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico 2: Tasa de Ocupación (Concentric Activity Rings) */}
+        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-between space-y-6">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Estado de Habitaciones</h3>
+            <p className="text-xs text-slate-400 mt-1">Distribución y disponibilidad de habitaciones.</p>
+          </div>
+          
+          <div className="flex items-center justify-around">
+            {/* Concentric Rings SVG */}
+            <div className="relative w-36 h-36 flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 150 150">
+                {/* Background tracks */}
+                <circle cx="75" cy="75" r="60" className="stroke-slate-100 dark:stroke-slate-800 fill-none" strokeWidth="12" />
+                <circle cx="75" cy="75" r="45" className="stroke-slate-100 dark:stroke-slate-800 fill-none" strokeWidth="12" />
+                <circle cx="75" cy="75" r="30" className="stroke-slate-100 dark:stroke-slate-800 fill-none" strokeWidth="12" />
+                
+                {/* Active Rings */}
+                {/* 1. Occupied (Purple) - Circumference = 376.99 */}
+                <circle 
+                  cx="75" 
+                  cy="75" 
+                  r="60" 
+                  className="stroke-purple-650 fill-none transition-all duration-1000 ease-out" 
+                  strokeWidth="12" 
+                  strokeDasharray="376.99" 
+                  strokeDashoffset={376.99 - (376.99 * Math.min(1, totalRoomsCount > 0 ? (totalRoomsCount - availableRoomsCount - maintenanceRoomsCount) / totalRoomsCount : 0))}
+                  strokeLinecap="round"
+                />
+                
+                {/* 2. Available (Green) - Circumference = 282.74 */}
+                <circle 
+                  cx="75" 
+                  cy="75" 
+                  r="45" 
+                  className="stroke-emerald-500 fill-none transition-all duration-1000 ease-out" 
+                  strokeWidth="12" 
+                  strokeDasharray="282.74" 
+                  strokeDashoffset={282.74 - (282.74 * Math.min(1, totalRoomsCount > 0 ? availableRoomsCount / totalRoomsCount : 0))}
+                  strokeLinecap="round"
+                />
+                
+                {/* 3. Maintenance (Orange) - Circumference = 188.5 */}
+                <circle 
+                  cx="75" 
+                  cy="75" 
+                  r="30" 
+                  className="stroke-amber-500 fill-none transition-all duration-1000 ease-out" 
+                  strokeWidth="12" 
+                  strokeDasharray="188.5" 
+                  strokeDashoffset={188.5 - (188.5 * Math.min(1, totalRoomsCount > 0 ? maintenanceRoomsCount / totalRoomsCount : 0))}
+                  strokeLinecap="round"
+                />
+              </svg>
+              {/* Central Label */}
+              <div className="absolute text-center space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</span>
+                <p className="text-xl font-black text-slate-800">{totalRoomsCount}</p>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="space-y-2.5 text-[10px]">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 bg-purple-650 rounded-full shrink-0" />
+                <span className="font-bold text-slate-700">Ocupadas ({totalRoomsCount - availableRoomsCount - maintenanceRoomsCount})</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full shrink-0" />
+                <span className="font-bold text-slate-700">Disponibles ({availableRoomsCount})</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 bg-amber-500 rounded-full shrink-0" />
+                <span className="font-bold text-slate-700">Mora/Mant. ({maintenanceRoomsCount})</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../../core/services/api';
-import { Plus, Edit2, Trash2, ChevronLeft, BedDouble } from 'lucide-react';
+import { Plus, Edit2, Trash2, ChevronLeft, BedDouble, Calendar, ChevronRight } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 
 interface Room {
@@ -11,6 +11,20 @@ interface Room {
   status: string; // "Disponible", "Ocupado", "Mantenimiento"
   propertyId: number;
 }
+
+interface OccupiedRange {
+  contratoId: number;
+  inquilinoName: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+}
+
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+const WEEKDAY_LABELS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
 
 export const Rooms: React.FC = () => {
   const { tenant, id } = useParams<{ tenant: string; id: string }>();
@@ -29,6 +43,13 @@ export const Rooms: React.FC = () => {
   const [price, setPrice] = useState('');
   const [status, setStatus] = useState('Disponible');
   const [submitting, setSubmitting] = useState(false);
+
+  // Estados Modal Calendario de Disponibilidad
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [availabilityRoom, setAvailabilityRoom] = useState<Room | null>(null);
+  const [occupiedRanges, setOccupiedRanges] = useState<OccupiedRange[]>([]);
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   const fetchRoomsAndProperty = async () => {
     setLoading(true);
@@ -102,6 +123,42 @@ export const Rooms: React.FC = () => {
 
   const handleDelete = async (roomId: number) => {
     setDeleteRoomId(roomId);
+  };
+
+  const openAvailabilityModal = async (room: Room) => {
+    setAvailabilityRoom(room);
+    setCalendarMonth(new Date());
+    setShowAvailabilityModal(true);
+    setLoadingAvailability(true);
+    try {
+      const res = await api.get(`/rooms/${room.id}/availability`);
+      setOccupiedRanges(res.data.occupiedRanges || []);
+    } catch (err: any) {
+      setError('No se pudo cargar la disponibilidad de la habitación.');
+    } finally {
+      setLoadingAvailability(false);
+    }
+  };
+
+  // Determina si una fecha cae dentro de algún rango de contrato ocupado
+  const getOccupancyForDate = (date: Date): OccupiedRange | null => {
+    const dateStr = date.toISOString().split('T')[0];
+    return occupiedRanges.find(r => dateStr >= r.startDate && dateStr <= r.endDate) || null;
+  };
+
+  // Genera la matriz de días (con relleno) para el mes actual del calendario
+  const getCalendarDays = (month: Date): (Date | null)[] => {
+    const year = month.getFullYear();
+    const monthIndex = month.getMonth();
+    const firstDay = new Date(year, monthIndex, 1);
+    const lastDay = new Date(year, monthIndex + 1, 0);
+    // Lunes = 0 ... Domingo = 6
+    const leadingBlanks = (firstDay.getDay() + 6) % 7;
+
+    const days: (Date | null)[] = [];
+    for (let i = 0; i < leadingBlanks; i++) days.push(null);
+    for (let d = 1; d <= lastDay.getDate(); d++) days.push(new Date(year, monthIndex, d));
+    return days;
   };
 
   const confirmDeleteRoom = async () => {
@@ -191,6 +248,13 @@ export const Rooms: React.FC = () => {
                   
                   {/* Acciones */}
                   <div className="flex space-x-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => openAvailabilityModal(room)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:bg-purple-50 hover:text-purple-650 transition-colors"
+                      title="Ver calendario de disponibilidad"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => openEditModal(room)}
                       className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition-colors"
@@ -287,6 +351,96 @@ export const Rooms: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CALENDARIO DE DISPONIBILIDAD */}
+      {showAvailabilityModal && availabilityRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAvailabilityModal(false)} />
+
+          <div className="bg-white border border-slate-200 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl z-10 p-6 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-md font-bold text-slate-900">Disponibilidad - Cuarto {availabilityRoom.roomNumber}</h3>
+                <p className="text-[11px] text-slate-400">Basado en los contratos activos y pendientes de esta habitación.</p>
+              </div>
+              <button onClick={() => setShowAvailabilityModal(false)} className="text-slate-400 hover:text-slate-900">✕</button>
+            </div>
+
+            {loadingAvailability ? (
+              <div className="py-10 text-center text-sm text-slate-400">Cargando disponibilidad...</div>
+            ) : (
+              <>
+                {/* Navegación de mes */}
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm font-bold text-slate-800">
+                    {MONTH_NAMES[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Grilla del calendario */}
+                <div className="grid grid-cols-7 gap-1 text-center">
+                  {WEEKDAY_LABELS.map(d => (
+                    <span key={d} className="text-[10px] font-bold text-slate-400 uppercase pb-1">{d}</span>
+                  ))}
+                  {getCalendarDays(calendarMonth).map((date, idx) => {
+                    if (!date) return <div key={idx} />;
+                    const occupancy = getOccupancyForDate(date);
+                    const isToday = date.toDateString() === new Date().toDateString();
+                    return (
+                      <div
+                        key={idx}
+                        title={occupancy ? `Ocupado: ${occupancy.inquilinoName}` : 'Disponible'}
+                        className={`aspect-square flex items-center justify-center rounded-lg text-xs font-semibold cursor-default ${
+                          occupancy
+                            ? occupancy.status === 'VIGENTE'
+                              ? 'bg-rose-100 text-rose-700'
+                              : 'bg-amber-100 text-amber-700'
+                            : 'bg-emerald-50 text-emerald-700'
+                        } ${isToday ? 'ring-2 ring-purple-400' : ''}`}
+                      >
+                        {date.getDate()}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Leyenda */}
+                <div className="flex flex-wrap gap-3 pt-2 border-t border-slate-100 text-[10px] font-semibold">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-50 border border-emerald-200" /> Disponible</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-100 border border-rose-200" /> Ocupado (vigente)</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-100 border border-amber-200" /> Reservado (pendiente de firma)</span>
+                </div>
+
+                {/* Lista de contratos */}
+                {occupiedRanges.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100 max-h-32 overflow-y-auto">
+                    {occupiedRanges.map(r => (
+                      <div key={r.contratoId} className="flex justify-between text-[11px] text-slate-600">
+                        <span className="font-semibold">{r.inquilinoName}</span>
+                        <span className="font-mono text-slate-400">{r.startDate} → {r.endDate}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

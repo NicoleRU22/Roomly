@@ -204,6 +204,7 @@
 
 .dark .text-slate-900,
 .dark .text-slate-950,
+.dark .text-slate-850,
 .dark .text-slate-800,
 .dark .text-slate-700 {
   color: var(--foreground) !important;

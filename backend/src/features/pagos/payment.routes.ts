@@ -1,12 +1,14 @@
 import { Router } from 'express';
-import { 
-  getAllPayments, 
-  createPayment, 
-  recordPayment, 
+import {
+  getAllPayments,
+  createPayment,
+  recordPayment,
   approvePayment,
   rejectPayment,
   exportPaymentsReport,
-  deletePayment 
+  deletePayment,
+  sendDebtReminder,
+  runRecurringInvoices
 } from './payment.controller';
 import { authMiddleware } from '../../core/middlewares/auth.middleware';
 import { tenantMiddleware } from '../../core/middlewares/tenant.middleware';
@@ -21,6 +23,8 @@ router.post('/payments', createPayment);
 router.put('/payments/:id/record', recordPayment);
 router.put('/payments/:id/approve', approvePayment);
 router.put('/payments/:id/reject', rejectPayment);
+router.post('/payments/remind-debt/:inquilinoId', sendDebtReminder);
+router.post('/payments/generate-recurring', runRecurringInvoices);
 router.delete('/payments/:id', deletePayment);
 
 export default router;
