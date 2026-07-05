@@ -190,6 +190,11 @@ export const Contratos: React.FC = () => {
   const [consultingSunat, setConsultingSunat] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Reglas de cobro configuradas por el propietario (con defaults razonables mientras carga)
+  const [expirationWarningDays, setExpirationWarningDays] = useState(30);
+  const [lateFeePerDay, setLateFeePerDay] = useState(5.0);
+  const [graceDays, setGraceDays] = useState(5);
+
   const getApiUrl = () => {
     return import.meta.env.VITE_API_URL || 'http://localhost:3001';
   };
@@ -198,13 +203,19 @@ export const Contratos: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [conRes, propRes] = await Promise.all([
+      const [conRes, propRes, configRes] = await Promise.all([
         api.get('/contratos'),
-        isTenant ? Promise.resolve({ data: [] }) : api.get('/properties')
+        isTenant ? Promise.resolve({ data: [] }) : api.get('/properties'),
+        api.get('/configuracion').catch(() => ({ data: null }))
       ]);
       setContratos(conRes.data);
       if (!isTenant) {
         setProperties(propRes.data);
+      }
+      if (configRes.data) {
+        setExpirationWarningDays(configRes.data.contractExpirationWarningDays ?? 30);
+        setLateFeePerDay(configRes.data.lateFeePerDay ?? 5.0);
+        setGraceDays(configRes.data.graceDays ?? 5);
       }
     } catch (err: any) {
       console.error('Error cargando contratos:', err);
@@ -248,13 +259,13 @@ export const Contratos: React.FC = () => {
     setShowDocModal(true);
   };
 
-  // Helper para verificar si está por vencer (menos de 30 días)
+  // Helper para verificar si está por vencer, según los días de anticipación configurados
   const isNearExpiration = (endDateStr: string) => {
     const end = new Date(endDateStr);
     const today = new Date();
     const diffTime = end.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= 30;
+    return diffDays >= 0 && diffDays <= expirationWarningDays;
   };
 
   const openRenewModal = (contract: Contrato) => {
@@ -359,9 +370,9 @@ export const Contratos: React.FC = () => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return '';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const year = d.getUTCFullYear();
     return `${day}/${month}/${year}`;
   };
 
@@ -550,7 +561,7 @@ export const Contratos: React.FC = () => {
             </p>
 
             <p>
-              <strong>CUARTA (Mora y Penalización):</strong> Se establece expresamente que a partir del 5to día de retraso del mes corriente, se aplicará de forma automática una penalización de <strong>S/. 5.00 diarios por cada día de mora acumulado</strong> hasta la liquidación del saldo.
+              <strong>CUARTA (Mora y Penalización):</strong> Se establece expresamente que a partir del {graceDays}to día de retraso del mes corriente, se aplicará de forma automática una penalización de <strong>S/. {lateFeePerDay.toFixed(2)} diarios por cada día de mora acumulado</strong> hasta la liquidación del saldo.
             </p>
 
             <p>
@@ -955,7 +966,7 @@ export const Contratos: React.FC = () => {
                   </p>
 
                   <p>
-                    **CUARTA (Mora):** Aplica recargo automático de S/. 5.00 diarios después de 5 días de retraso.
+                    **CUARTA (Mora):** Aplica recargo automático de S/. {lateFeePerDay.toFixed(2)} diarios después de {graceDays} días de retraso.
                   </p>
 
                   {selectedContract.specialTerms && (

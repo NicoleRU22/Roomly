@@ -33,7 +33,16 @@ export const createNotification = async (input: CreateNotificationInput) => {
   });
 };
 
-// Notifica a todos los usuarios con rol PROPIETARIO dentro del tenant.
+// Mapea cada tipo de notificación dirigida al propietario con su preferencia configurable en Tenant.
+// Los tipos que no están en este mapa (p. ej. los dirigidos al inquilino) nunca se filtran.
+const OWNER_NOTIFICATION_PREFERENCE_FIELD: Partial<Record<NotificationType, 'notifyComprobantePendiente' | 'notifyContratoFirmado' | 'notifyTicketCreado'>> = {
+  COMPROBANTE_PENDIENTE: 'notifyComprobantePendiente',
+  CONTRATO_FIRMADO: 'notifyContratoFirmado',
+  TICKET_CREADO: 'notifyTicketCreado'
+};
+
+// Notifica a todos los usuarios con rol PROPIETARIO dentro del tenant,
+// respetando sus preferencias de notificación configuradas en Configuración del negocio.
 export const notifyOwners = async (
   tenantId: number,
   type: NotificationType,
@@ -41,6 +50,12 @@ export const notifyOwners = async (
   message: string,
   link?: string
 ) => {
+  const preferenceField = OWNER_NOTIFICATION_PREFERENCE_FIELD[type];
+  if (preferenceField) {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (tenant && tenant[preferenceField] === false) return;
+  }
+
   const owners = await prisma.usuario.findMany({
     where: { tenantId, role: 'PROPIETARIO' }
   });

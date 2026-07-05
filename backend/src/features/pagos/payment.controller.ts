@@ -4,11 +4,12 @@ import { saveBase64Image } from '../../core/utils/upload';
 import { notifyOwners, notifyInquilino } from '../notificaciones/notification.service';
 import { generateRecurringInvoices } from './recurring.service';
 
-// Helper para calcular la mora
-const calculateDelay = (dueDateStr: Date | string): number => {
+// Helper para calcular la mora, según las reglas de cobro configuradas por el propietario
+// (graceDays: días de gracia antes de aplicar penalización; lateFeePerDay: monto por día de retraso)
+const calculateDelay = (dueDateStr: Date | string, graceDays: number = 5, lateFeePerDay: number = 5.0): number => {
   const due = new Date(dueDateStr);
   const today = new Date();
-  
+
   // Setear horas a 0 para comparar solo fechas
   due.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
@@ -16,10 +17,9 @@ const calculateDelay = (dueDateStr: Date | string): number => {
   if (today.getTime() > due.getTime()) {
     const diffTime = Math.abs(today.getTime() - due.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    // Penalización: a partir del 5to día, 5 soles de mora por cada día que pase
-    if (diffDays >= 5) {
-      return diffDays * 5.0;
+
+    if (diffDays >= graceDays) {
+      return diffDays * lateFeePerDay;
     }
   }
   return 0.0;
@@ -62,10 +62,14 @@ export const getAllPayments = async (req: Request, res: Response): Promise<void>
       orderBy: { dueDate: 'asc' }
     });
 
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    const graceDays = tenant?.graceDays ?? 5;
+    const lateFeePerDay = tenant?.lateFeePerDay ?? 5.0;
+
     // Actualizar mora dinámicamente al listar para asegurar datos frescos
     const updatedList = await Promise.all(list.map(async (p: any) => {
       if (p.status !== 'PAGADO' && p.status !== 'CANCELADO') {
-        const penalty = calculateDelay(p.dueDate);
+        const penalty = calculateDelay(p.dueDate, graceDays, lateFeePerDay);
         let newStatus = p.status;
         
         // Si está pendiente y ya venció
@@ -147,8 +151,9 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       if (room) rId = room.id;
     }
 
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
     const due = new Date(dueDate);
-    const delayPenalty = calculateDelay(due);
+    const delayPenalty = calculateDelay(due, tenant?.graceDays ?? 5, tenant?.lateFeePerDay ?? 5.0);
     const status = due < new Date() ? 'VENCIDO' : 'PENDIENTE';
 
     const payment = await prisma.payment.create({

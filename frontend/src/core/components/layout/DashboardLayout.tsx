@@ -83,11 +83,12 @@ export const DashboardLayout: React.FC = () => {
   const currentLabel = navItems.find(item => location.pathname.startsWith(item.path))?.label || 'Panel de control';
 
   // Guardar acceso a rutas administrativas si es inquilino
-  const isLandlordRoute = 
-    location.pathname.endsWith('/propiedades') || 
-    location.pathname.includes('/propiedades/') || 
-    location.pathname.endsWith('/inquilinos') || 
-    location.pathname.endsWith('/servicios');
+  const isLandlordRoute =
+    location.pathname.endsWith('/propiedades') ||
+    location.pathname.includes('/propiedades/') ||
+    location.pathname.endsWith('/inquilinos') ||
+    location.pathname.endsWith('/servicios') ||
+    location.pathname.endsWith('/configuracion');
 
   if (user?.role === 'INQUILINO' && isLandlordRoute) {
     return <Navigate to={`/${tenant?.slug}/dashboard`} replace />;
@@ -274,9 +275,15 @@ export const DashboardLayout: React.FC = () => {
                 </>
               )}
             </div>
-            <button className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100" title="Configuración">
-              <Settings className="w-5 h-5" />
-            </button>
+            {user?.role !== 'INQUILINO' && (
+              <button
+                onClick={() => navigate(`/${tenant?.slug}/configuracion`)}
+                className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100"
+                title="Configuración"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
             <button 
               onClick={handleLogout}
               className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-500/10 hover:text-red-600 active:scale-95 transition-all duration-100"

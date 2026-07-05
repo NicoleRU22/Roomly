@@ -1,12 +1,15 @@
 import { Router } from 'express';
-import { 
-  getAllInquilinos, 
-  getMyInfo, 
-  createInquilino, 
-  updateInquilino, 
-  deleteInquilino, 
+import {
+  getAllInquilinos,
+  getMyInfo,
+  createInquilino,
+  updateInquilino,
+  deleteInquilino,
   changeInquilinoPassword,
-  consultarDni
+  consultarDni,
+  darDeBajaInquilino,
+  cambiarHabitacionInquilino,
+  getInquilinoHistorial
 } from './inquilino.controller';
 import { authMiddleware } from '../../core/middlewares/auth.middleware';
 import { tenantMiddleware } from '../../core/middlewares/tenant.middleware';
@@ -21,6 +24,9 @@ router.get('/inquilinos/consultar-dni/:dni', consultarDni);
 router.post('/inquilinos', createInquilino);
 router.put('/inquilinos/:id', updateInquilino);
 router.delete('/inquilinos/:id', deleteInquilino);
+router.put('/inquilinos/:id/baja', darDeBajaInquilino);
+router.put('/inquilinos/:id/cambiar-habitacion', cambiarHabitacionInquilino);
+router.get('/inquilinos/:id/historial', getInquilinoHistorial);
 router.put('/inquilinos/change-password', changeInquilinoPassword);
 
 export default router;

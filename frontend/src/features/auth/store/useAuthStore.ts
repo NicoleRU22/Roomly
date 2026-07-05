@@ -19,6 +19,7 @@ interface AuthState {
   user: User | null;
   tenant: Tenant | null;
   login: (token: string, user: User, tenant: Tenant) => void;
+  updateUser: (partial: Partial<User>) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
 }
@@ -49,6 +50,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
       localStorage.setItem('roomly_user', JSON.stringify(user));
       localStorage.setItem('roomly_tenant', JSON.stringify(tenant));
       set({ token, user, tenant });
+    },
+
+    updateUser: (partial) => {
+      const current = get().user;
+      if (!current) return;
+      const updated = { ...current, ...partial };
+      localStorage.setItem('roomly_user', JSON.stringify(updated));
+      set({ user: updated });
     },
 
     logout: () => {

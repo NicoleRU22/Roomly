@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
-import { Plus, MessageSquare, FileText, Search, Filter, Trash2, Edit, AlertTriangle, CheckCircle } from 'lucide-react';
-import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { Plus, MessageSquare, FileText, Search, Filter, Edit, AlertTriangle, CheckCircle, LogOut, ArrowRightLeft, History } from 'lucide-react';
 import { AsYouType, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { Pagination } from '../../../core/components/ui/Pagination';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
@@ -18,6 +17,19 @@ interface Inquilino {
   roomId?: number;
   roomNumber?: string;
   roomPrice?: number;
+  moveOutDate?: string;
+  moveOutReason?: string;
+}
+
+interface HistorialEvento {
+  id: number;
+  type: string;
+  fromPropertyName?: string;
+  fromRoomNumber?: string;
+  toPropertyName?: string;
+  toRoomNumber?: string;
+  reason?: string;
+  eventDate: string;
 }
 
 interface Property {
@@ -70,6 +82,9 @@ export const Inquilinos: React.FC = () => {
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [whatsappTemplate, setWhatsappTemplate] = useState(
+    'Hola {nombre}, te saludamos de Roomly. Te recordamos que tienes cobros pendientes en la plataforma. Por favor ingresa para regularizarlos.'
+  );
   const [payments, setPayments] = useState<Payment[]>([]);
   const [contracts, setContracts] = useState<Contrato[]>([]);
 
@@ -90,8 +105,28 @@ export const Inquilinos: React.FC = () => {
   // Estados Modal Inquilino Form
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [deleteInqId, setDeleteInqId] = useState<number | null>(null);
-  
+
+  // Estados Modal Dar de Baja
+  const [bajaInquilino, setBajaInquilino] = useState<Inquilino | null>(null);
+  const [moveOutDate, setMoveOutDate] = useState('');
+  const [moveOutReason, setMoveOutReason] = useState('');
+  const [submittingBaja, setSubmittingBaja] = useState(false);
+
+  // Estados Modal Cambiar de Habitación
+  const [transferInquilino, setTransferInquilino] = useState<Inquilino | null>(null);
+  const [transferPropertyId, setTransferPropertyId] = useState('');
+  const [transferRoomId, setTransferRoomId] = useState('');
+  const [transferRooms, setTransferRooms] = useState<Room[]>([]);
+  const [loadingTransferRooms, setLoadingTransferRooms] = useState(false);
+  const [transferDate, setTransferDate] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [submittingTransfer, setSubmittingTransfer] = useState(false);
+
+  // Estados Modal Historial
+  const [historialInquilino, setHistorialInquilino] = useState<Inquilino | null>(null);
+  const [historialEventos, setHistorialEventos] = useState<HistorialEvento[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+
   // Campos Formulario Inquilino
   const [name, setName] = useState('');
   const [documentVal, setDocumentVal] = useState('');
@@ -201,16 +236,20 @@ export const Inquilinos: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [inqRes, propRes, payRes, conRes] = await Promise.all([
+      const [inqRes, propRes, payRes, conRes, configRes] = await Promise.all([
         api.get('/inquilinos'),
         api.get('/properties'),
         api.get('/payments'),
-        api.get('/contratos')
+        api.get('/contratos'),
+        api.get('/configuracion').catch(() => ({ data: null }))
       ]);
       setInquilinos(inqRes.data);
       setProperties(propRes.data);
       setPayments(payRes.data);
       setContracts(conRes.data);
+      if (configRes.data?.whatsappTemplate) {
+        setWhatsappTemplate(configRes.data.whatsappTemplate);
+      }
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError('No se pudo cargar la información de inquilinos.');
@@ -329,14 +368,108 @@ export const Inquilinos: React.FC = () => {
     alert(`${type} copiado al portapapeles.`);
   };
 
-  const handleDelete = async (id: number) => {
+  const openBajaModal = (inq: Inquilino) => {
+    setBajaInquilino(inq);
+    setMoveOutDate(getTodayIso());
+    setMoveOutReason('');
+  };
+
+  const handleConfirmBaja = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bajaInquilino || !moveOutDate) return;
+    setSubmittingBaja(true);
     try {
-      await api.delete(`/inquilinos/${id}`);
-      setDeleteInqId(null);
+      await api.put(`/inquilinos/${bajaInquilino.id}/baja`, {
+        moveOutDate,
+        reason: moveOutReason || undefined
+      });
+      setBajaInquilino(null);
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Error al eliminar el inquilino.');
+      alert(err.response?.data?.error || 'Error al dar de baja al inquilino.');
+    } finally {
+      setSubmittingBaja(false);
     }
+  };
+
+  const openTransferModal = (inq: Inquilino) => {
+    setTransferInquilino(inq);
+    setTransferPropertyId(inq.propertyId ? String(inq.propertyId) : '');
+    setTransferRoomId('');
+    setTransferDate(getTodayIso());
+    setTransferReason('');
+  };
+
+  useEffect(() => {
+    if (transferInquilino && transferPropertyId) {
+      const fetchTransferRooms = async () => {
+        setLoadingTransferRooms(true);
+        try {
+          const res = await api.get(`/properties/${transferPropertyId}/rooms`);
+          setTransferRooms(res.data);
+        } catch (err) {
+          console.error('Error loading rooms:', err);
+        } finally {
+          setLoadingTransferRooms(false);
+        }
+      };
+      fetchTransferRooms();
+    } else {
+      setTransferRooms([]);
+      setTransferRoomId('');
+    }
+  }, [transferPropertyId, transferInquilino]);
+
+  const handleConfirmTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferInquilino || !transferRoomId) return;
+    setSubmittingTransfer(true);
+    try {
+      await api.put(`/inquilinos/${transferInquilino.id}/cambiar-habitacion`, {
+        roomId: parseInt(transferRoomId),
+        transferDate: transferDate || undefined,
+        reason: transferReason || undefined
+      });
+      setTransferInquilino(null);
+      fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error al cambiar de habitación al inquilino.');
+    } finally {
+      setSubmittingTransfer(false);
+    }
+  };
+
+  const openHistorialModal = async (inq: Inquilino) => {
+    setHistorialInquilino(inq);
+    setLoadingHistorial(true);
+    try {
+      const res = await api.get(`/inquilinos/${inq.id}/historial`);
+      setHistorialEventos(res.data);
+    } catch (err) {
+      console.error('Error cargando historial:', err);
+      setHistorialEventos([]);
+    } finally {
+      setLoadingHistorial(false);
+    }
+  };
+
+  const historialLabel = (type: string) => {
+    if (type === 'ALTA') return 'Alta de inquilino';
+    if (type === 'CAMBIO_HABITACION') return 'Cambio de habitación';
+    if (type === 'BAJA') return 'Salida / mudanza';
+    return type;
+  };
+
+  // Formatea fechas de solo-fecha (guardadas como medianoche UTC) usando los componentes UTC,
+  // para evitar que se muestre un día antes en zonas horarias detrás de UTC (ej. Perú).
+  const formatDateUTC = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const year = d.getUTCFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   // Fecha actual en formato YYYY-MM-DD (hora local)
@@ -528,7 +661,7 @@ export const Inquilinos: React.FC = () => {
                   const initials = nameParts.map(p => p.charAt(0)).slice(0, 2).join('').toUpperCase();
 
                   // Whatsapp text encoding
-                  const waText = encodeURIComponent(`Hola ${inq.name}, te saludamos de Roomly. Te recordamos que tienes cobros pendientes en la plataforma. Por favor ingresa para regularizarlos.`);
+                  const waText = encodeURIComponent(whatsappTemplate.replace(/\{nombre\}/g, inq.name));
                   const phoneDigits = inq.phone ? inq.phone.replace(/\D/g, '') : '';
                   const waPhone = phoneDigits.startsWith('51') ? phoneDigits : `51${phoneDigits}`;
                   const waLink = phoneDigits ? `https://wa.me/${waPhone}?text=${waText}` : null;
@@ -585,6 +718,12 @@ export const Inquilinos: React.FC = () => {
                               Debe: S/. {debt.toFixed(2)}
                             </span>
                           )}
+
+                          {inq.status === 'INACTIVO' && inq.moveOutDate && (
+                            <span className="text-[10px] text-slate-500 font-semibold" title={inq.moveOutReason || undefined}>
+                              Salió: {formatDateUTC(inq.moveOutDate)}
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -617,7 +756,27 @@ export const Inquilinos: React.FC = () => {
                             <FileText className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Editar / Eliminar */}
+                          {/* Historial */}
+                          <button
+                            onClick={() => openHistorialModal(inq)}
+                            className="p-1 text-slate-400 hover:text-indigo-600 transition-colors border border-slate-200 hover:border-indigo-200 rounded-lg bg-slate-50/50 hover:bg-indigo-50/30"
+                            title="Ver historial"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Cambiar de habitación (solo si está activo) */}
+                          {inq.status !== 'INACTIVO' && (
+                            <button
+                              onClick={() => openTransferModal(inq)}
+                              className="p-1 text-slate-400 hover:text-amber-600 transition-colors border border-slate-200 hover:border-amber-200 rounded-lg bg-slate-50/50 hover:bg-amber-50/30"
+                              title="Cambiar de habitación"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Editar */}
                           <button
                             onClick={() => openEditModal(inq)}
                             className="p-1 text-slate-600 hover:text-purple-700 transition-colors"
@@ -625,13 +784,17 @@ export const Inquilinos: React.FC = () => {
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => setDeleteInqId(inq.id)}
-                            className="p-1 text-slate-400 hover:text-red-600 transition-colors"
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+
+                          {/* Dar de baja (solo si está activo) */}
+                          {inq.status !== 'INACTIVO' && (
+                            <button
+                              onClick={() => openBajaModal(inq)}
+                              className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                              title="Dar de baja"
+                            >
+                              <LogOut className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -686,7 +849,7 @@ export const Inquilinos: React.FC = () => {
                   >
                     {viewingContracts.map((contract) => (
                       <option key={contract.id} value={contract.id}>
-                        Contrato #{1000 + contract.id} - {contract.status} ({new Date(contract.startDate).toLocaleDateString()} a {new Date(contract.endDate).toLocaleDateString()})
+                        Contrato #{1000 + contract.id} - {contract.status} ({formatDateUTC(contract.startDate)} a {formatDateUTC(contract.endDate)})
                       </option>
                     ))}
                   </select>
@@ -697,7 +860,7 @@ export const Inquilinos: React.FC = () => {
               {viewingContract.signatureUrl ? (
                 <div className="p-3 bg-emerald-50 border border-emerald-150 rounded-xl text-emerald-800 font-semibold flex items-center gap-1.5">
                   <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Firmado digitalmente por {viewingContract.inquilinoName} el {new Date(viewingContract.startDate).toLocaleDateString()}.</span>
+                  <span>Firmado digitalmente por {viewingContract.inquilinoName} el {formatDateUTC(viewingContract.startDate)}.</span>
                 </div>
               ) : (
                 <div className="p-3 bg-amber-50 border border-amber-150 rounded-xl text-amber-800 font-semibold flex items-center gap-1.5">
@@ -722,7 +885,7 @@ export const Inquilinos: React.FC = () => {
                 )}
 
                 <p>
-                  <strong>VIGENCIA:</strong> Inicia el <strong>{new Date(viewingContract.startDate).toLocaleDateString()}</strong> y finaliza el <strong>{new Date(viewingContract.endDate).toLocaleDateString()}</strong>.
+                  <strong>VIGENCIA:</strong> Inicia el <strong>{formatDateUTC(viewingContract.startDate)}</strong> y finaliza el <strong>{formatDateUTC(viewingContract.endDate)}</strong>.
                 </p>
 
                 <p>
@@ -1033,21 +1196,221 @@ export const Inquilinos: React.FC = () => {
         </div>
       )}
 
-      {/* ConfirmModal for deletion */}
-      <ConfirmModal
-        isOpen={deleteInqId !== null}
-        title="Eliminar Inquilino"
-        message="¿Está seguro de que desea eliminar este inquilino? Se liberará su habitación y este cambio no se puede deshacer."
-        isDestructive
-        confirmText="Eliminar"
-        cancelText="Cancelar"
-        onConfirm={() => {
-          if (deleteInqId !== null) {
-            handleDelete(deleteInqId);
-          }
-        }}
-        onCancel={() => setDeleteInqId(null)}
-      />
+      {/* MODAL DAR DE BAJA (PROCESO DE SALIDA) */}
+      {bajaInquilino && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setBajaInquilino(null)} />
+
+          <div className="bg-white border border-slate-200 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl z-10 p-8 space-y-6">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <LogOut className="w-5 h-5 text-red-600" />
+                Dar de baja a {bajaInquilino.name}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Se liberará su habitación y se registrará el evento en su historial. El inquilino quedará como INACTIVO, conservando sus pagos y contratos previos.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmBaja} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1.5">Fecha de mudanza / salida</label>
+                <input
+                  type="date"
+                  value={moveOutDate}
+                  onChange={(e) => setMoveOutDate(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1.5">Motivo de salida</label>
+                <textarea
+                  rows={3}
+                  value={moveOutReason}
+                  onChange={(e) => setMoveOutReason(e.target.value)}
+                  placeholder="Ej. fin de contrato, cambio de ciudad, incumplimiento de pago..."
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <button
+                  type="submit"
+                  disabled={submittingBaja}
+                  className="w-full py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm disabled:opacity-50 transition-all active:scale-[0.98]"
+                >
+                  {submittingBaja ? 'Procesando...' : 'Confirmar baja'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBajaInquilino(null)}
+                  className="w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl transition-colors text-center"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CAMBIAR DE HABITACIÓN */}
+      {transferInquilino && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setTransferInquilino(null)} />
+
+          <div className="bg-white border border-slate-200 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl z-10 p-8 space-y-6">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-amber-600" />
+                Cambiar de habitación a {transferInquilino.name}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Elige la propiedad (puede ser un edificio distinto de tu portafolio) y el cuarto destino. Se cerrará el contrato actual y se generará uno nuevo pendiente de firma.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmTransfer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1.5">Propiedad destino</label>
+                <select
+                  value={transferPropertyId}
+                  onChange={(e) => setTransferPropertyId(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650"
+                  required
+                >
+                  <option value="">-- Elige una propiedad --</option>
+                  {properties.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1.5">Cuarto disponible</label>
+                <select
+                  value={transferRoomId}
+                  onChange={(e) => setTransferRoomId(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650"
+                  disabled={!transferPropertyId || loadingTransferRooms}
+                  required
+                >
+                  <option value="">-- Elige un cuarto --</option>
+                  {transferRooms.filter(r => r.status === 'Disponible').map(r => (
+                    <option key={r.id} value={r.id}>
+                      Cuarto {r.roomNumber} (S/. {r.price}/mes)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1.5">Fecha del cambio</label>
+                  <input
+                    type="date"
+                    value={transferDate}
+                    onChange={(e) => setTransferDate(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1.5">Motivo del cambio</label>
+                  <input
+                    type="text"
+                    value={transferReason}
+                    onChange={(e) => setTransferReason(e.target.value)}
+                    placeholder="Ej. solicitud del inquilino"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <button
+                  type="submit"
+                  disabled={submittingTransfer || !transferRoomId}
+                  className="w-full py-3 bg-[#A855F7] hover:bg-purple-650 text-white text-sm font-bold rounded-xl shadow-sm disabled:opacity-50 transition-all active:scale-[0.98]"
+                >
+                  {submittingTransfer ? 'Procesando...' : 'Confirmar cambio'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTransferInquilino(null)}
+                  className="w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl transition-colors text-center"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL HISTORIAL DEL INQUILINO */}
+      {historialInquilino && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setHistorialInquilino(null)} />
+
+          <div className="bg-white border border-slate-200 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl z-10 flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+              <div>
+                <h3 className="font-bold text-slate-950 text-sm flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-indigo-600" />
+                  Historial de {historialInquilino.name}
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">Altas, cambios de habitación y salidas registradas</p>
+              </div>
+              <button onClick={() => setHistorialInquilino(null)} className="text-slate-400 hover:text-slate-900">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingHistorial ? (
+                <p className="text-xs text-slate-400 text-center py-8">Cargando historial...</p>
+              ) : historialEventos.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-8">Aún no hay eventos registrados para este inquilino.</p>
+              ) : (
+                <ol className="space-y-4 border-l-2 border-slate-100 pl-4">
+                  {historialEventos.map((evt) => (
+                    <li key={evt.id} className="relative">
+                      <span className={`absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full ${
+                        evt.type === 'BAJA' ? 'bg-red-500' : evt.type === 'CAMBIO_HABITACION' ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`} />
+                      <p className="text-xs font-bold text-slate-800">{historialLabel(evt.type)}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">{formatDateUTC(evt.eventDate)}</p>
+                      {evt.type === 'CAMBIO_HABITACION' && (
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          {evt.fromRoomNumber ? `Cuarto ${evt.fromRoomNumber} (${evt.fromPropertyName})` : 'Sin habitación previa'}
+                          {' → '}
+                          Cuarto {evt.toRoomNumber} ({evt.toPropertyName})
+                        </p>
+                      )}
+                      {evt.type === 'BAJA' && evt.fromRoomNumber && (
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          Salió de Cuarto {evt.fromRoomNumber} ({evt.fromPropertyName})
+                        </p>
+                      )}
+                      {evt.reason && (
+                        <p className="text-[11px] text-slate-500 italic mt-1">"{evt.reason}"</p>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <div className="flex justify-end p-4 border-t border-slate-100 bg-slate-50/50">
+              <button
+                onClick={() => setHistorialInquilino(null)}
+                className="py-2 px-5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

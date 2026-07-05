@@ -10,6 +10,24 @@ model Tenant {
   id            Int                 @id @default(autoincrement())
   slug          String              @unique
   companyName   String              @map("company_name")
+
+  // Configuración del negocio
+  landlordRuc     String?
+  landlordAddress String?
+
+  // Reglas de cobro
+  lateFeePerDay                  Float  @default(5.0)
+  graceDays                      Int    @default(5)
+  contractExpirationWarningDays  Int    @default(30)
+
+  // Plantilla de recordatorio de WhatsApp (soporta {nombre} como placeholder)
+  whatsappTemplate String? @default("Hola {nombre}, te saludamos de Roomly. Te recordamos que tienes cobros pendientes en la plataforma. Por favor ingresa para regularizarlos.")
+
+  // Preferencias de notificaciones al propietario
+  notifyComprobantePendiente Boolean @default(true)
+  notifyContratoFirmado     Boolean @default(true)
+  notifyTicketCreado         Boolean @default(true)
+
   usuarios      Usuario[]
   properties    Property[]
   rooms         Room[]
@@ -19,6 +37,7 @@ model Tenant {
   contratos     Contrato[]
   tickets       MaintenanceTicket[]
   notifications Notification[]
+  inquilinoHistorial InquilinoHistorial[]
 }
 
 model Usuario {
@@ -64,21 +83,47 @@ model Room {
 }
 
 model Inquilino {
-  id         Int                 @id @default(autoincrement())
-  name       String
-  document   String
-  email      String
-  phone      String?
-  status     String              @default("ACTIVO") // "ACTIVO", "INACTIVO", "MOROSO"
-  propertyId Int?
-  property   Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  roomId     Int?
-  room       Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  tenantId   Int
-  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  payments   Payment[]
-  contratos  Contrato[]
-  tickets    MaintenanceTicket[]
+  id             Int                 @id @default(autoincrement())
+  name           String
+  document       String
+  email          String
+  phone          String?
+  status         String              @default("ACTIVO") // "ACTIVO", "INACTIVO", "MOROSO"
+  propertyId     Int?
+  property       Property?           @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  roomId         Int?
+  room           Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  moveOutDate    DateTime?           // Fecha de mudanza/salida
+  moveOutReason  String?             // Motivo de la salida
+  tenantId       Int
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payments       Payment[]
+  contratos      Contrato[]
+  tickets        MaintenanceTicket[]
+  historial      InquilinoHistorial[]
+}
+
+model InquilinoHistorial {
+  id             Int       @id @default(autoincrement())
+  tenantId       Int
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inquilinoId    Int
+  inquilino      Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
+  type           String    // "ALTA", "CAMBIO_HABITACION", "BAJA"
+  fromPropertyId Int?
+  fromPropertyName String?
+  fromRoomId     Int?
+  fromRoomNumber String?
+  toPropertyId   Int?
+  toPropertyName String?
+  toRoomId       Int?
+  toRoomNumber   String?
+  reason         String?
+  eventDate      DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+
+  @@index([inquilinoId])
+  @@index([tenantId])
 }
 
 model Servicio {

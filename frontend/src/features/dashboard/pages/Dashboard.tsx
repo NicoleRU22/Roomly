@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
+import { OnboardingGuide } from '../components/OnboardingGuide';
 
 interface Property {
   id: number;
@@ -75,7 +76,6 @@ export const Dashboard: React.FC = () => {
   // Estados de Propietario (Admin)
   const [properties, setProperties] = useState<Property[]>([]);
   const [totalInquilinos, setTotalInquilinos] = useState(0);
-  const [showOnboarding, setShowOnboarding] = useState(true);
   const [monthlyRevenue, setMonthlyRevenue] = useState(0); // Recaudado
   const [projectedRevenue, setProjectedRevenue] = useState(0); // Proyectado
   const [occupancyRate, setOccupancyRate] = useState(0); // Ocupación Global
@@ -529,54 +529,10 @@ export const Dashboard: React.FC = () => {
       path: `/${tenant}/pagos`
     }
   ];
-  const onboardingAllDone = onboardingSteps.every(s => s.done);
-  const nextStep = onboardingSteps.find(s => !s.done);
-
   return (
     <div className="space-y-8">
-      {/* GUÍA DE INICIO PARA PROPIETARIOS NUEVOS */}
-      {!onboardingAllDone && showOnboarding && (
-        <div className="bg-gradient-to-r from-purple-50 to-white border border-purple-150 rounded-3xl p-6 space-y-5 relative">
-          <button
-            onClick={() => setShowOnboarding(false)}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-xs font-bold"
-            title="Ocultar guía"
-          >
-            ✕
-          </button>
-          <div>
-            <h3 className="text-sm font-black text-purple-700 uppercase tracking-wider">Primeros pasos en Roomly</h3>
-            <p className="text-xs text-slate-500 mt-1">Sigue esta guía para dejar tu cuenta lista y empezar a recibir pagos.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {onboardingSteps.map((step, idx) => (
-              <div
-                key={step.label}
-                className={`p-4 rounded-2xl border space-y-2 ${step.done ? 'bg-emerald-50 border-emerald-150' : 'bg-white border-slate-200'}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${step.done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {step.done ? '✓' : idx + 1}
-                  </span>
-                  {step === nextStep && (
-                    <span className="text-[9px] font-bold text-purple-650 uppercase bg-purple-50 border border-purple-100 rounded-full px-2 py-0.5">Siguiente</span>
-                  )}
-                </div>
-                <p className={`text-xs font-bold ${step.done ? 'text-emerald-700' : 'text-slate-800'}`}>{step.label}</p>
-                <p className="text-[10px] text-slate-400 leading-normal">{step.description}</p>
-                {!step.done && (
-                  <Link
-                    to={step.path}
-                    className="inline-block text-[10px] font-bold text-purple-650 hover:underline"
-                  >
-                    Ir ahora →
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* GUÍA DE INICIO GUIADA PARA PROPIETARIOS NUEVOS */}
+      <OnboardingGuide steps={onboardingSteps} storageKey="roomly_onboarding" />
 
       {/* 4 TARJETAS DE MÉTRICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
