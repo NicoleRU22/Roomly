@@ -2,10 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { 
-  Building2, 
-  Users, 
-  DollarSign, 
+import {
+  Building2,
+  DollarSign,
   Plus,
   MapPin,
   Settings,
@@ -75,7 +74,6 @@ export const Dashboard: React.FC = () => {
 
   // Estados de Propietario (Admin)
   const [properties, setProperties] = useState<Property[]>([]);
-  const [activeTenants, setActiveTenants] = useState(0);
   const [totalInquilinos, setTotalInquilinos] = useState(0);
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [monthlyRevenue, setMonthlyRevenue] = useState(0); // Recaudado
@@ -136,9 +134,6 @@ export const Dashboard: React.FC = () => {
         const pays = payRes.data;
         const ticketsList = ticketRes.data;
 
-        // Calcular inquilinos activos
-        const activeCount = inqs.filter((i: any) => i.status === 'ACTIVO').length;
-
         // Calcular KPIs de Ocupación
         let totalRooms = 0;
         let occupiedRooms = 0;
@@ -171,7 +166,6 @@ export const Dashboard: React.FC = () => {
         });
 
         setProperties(props);
-        setActiveTenants(activeCount);
         setTotalInquilinos(inqs.length);
         setMonthlyRevenue(collected);
         setProjectedRevenue(projected);

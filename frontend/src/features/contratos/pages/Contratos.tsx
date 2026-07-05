@@ -222,18 +222,6 @@ export const Contratos: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, filterProperty, filterStatus, filterDateStart, filterDateEnd]);
 
-  // Leer foto de firma y convertir a Base64
-  const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSignatureBase64(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const handleSignContract = async (contractId: number) => {
     if (!signatureBase64 || !acceptedTerms) return;
 
