@@ -453,6 +453,123 @@ export const sendDebtReminder = async (req: Request, res: Response): Promise<voi
   }
 };
 
+const SCHEDULE_MONTH_ABBR = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+
+const formatScheduleMonthLabel = (year: number, month: number): string => `${SCHEDULE_MONTH_ABBR[month]} ${String(year).slice(2)}`;
+
+// Genera el cronograma de pagos (inquilino x mes) mostrando el estado de cobro de cada mes,
+// derivado del contrato vigente en ese periodo y del recibo de alquiler correspondiente (si ya se generó).
+export const getPaymentSchedule = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. No tienes permisos para ver el cronograma de pagos.' });
+    return;
+  }
+
+  try {
+    const requestedMonths = parseInt(req.query.months as string);
+    const numMonths = Math.min(Math.max(isNaN(requestedMonths) ? 12 : requestedMonths, 1), 24);
+
+    const now = new Date();
+    const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+    const months = Array.from({ length: numMonths }, (_, idx) => {
+      const offset = numMonths - 1 - idx;
+      const start = new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - offset, 1));
+      const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+      return {
+        key: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`,
+        year: start.getUTCFullYear(),
+        month: start.getUTCMonth(),
+        start,
+        end
+      };
+    });
+
+    const rangeStart = months[0].start;
+    const rangeEnd = months[months.length - 1].end;
+    const isCurrentMonthKey = (key: string) => key === `${currentMonthStart.getUTCFullYear()}-${String(currentMonthStart.getUTCMonth() + 1).padStart(2, '0')}`;
+
+    const inquilinos = await prisma.inquilino.findMany({
+      where: { tenantId },
+      include: {
+        room: { include: { property: true } },
+        contratos: { where: { status: { not: 'PENDIENTE_FIRMA' } } },
+        payments: {
+          where: {
+            paymentType: 'ALQUILER',
+            dueDate: { gte: rangeStart, lte: rangeEnd }
+          }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    const debtAgg = await prisma.payment.groupBy({
+      by: ['inquilinoId'],
+      where: { tenantId, status: { in: ['PENDIENTE', 'PAGADO_PARCIAL', 'VENCIDO'] } },
+      _sum: { amount: true, amountPaid: true, delayPenalty: true }
+    });
+    const debtByInquilino = new Map(
+      debtAgg.map((d) => [d.inquilinoId, (d._sum.amount || 0) - (d._sum.amountPaid || 0) + (d._sum.delayPenalty || 0)])
+    );
+
+    const totalsByKey = new Map(months.map((m) => [m.key, { key: m.key, collected: 0, expected: 0 }]));
+
+    const inquilinosDto = inquilinos.map((inq: any) => {
+      const cells: Record<string, any> = {};
+
+      for (const m of months) {
+        const contrato = inq.contratos.find((c: any) => new Date(c.startDate) <= m.end && new Date(c.endDate) >= m.start);
+        const payment = inq.payments.find((p: any) => {
+          const d = new Date(p.dueDate);
+          return d >= m.start && d <= m.end;
+        });
+
+        if (!contrato || !payment || payment.status === 'CANCELADO') {
+          cells[m.key] = { status: 'SIN_CONTRATO' };
+          continue;
+        }
+
+        const cellStatus = payment.status === 'PAGADO_PARCIAL' ? 'PARCIAL' : payment.status;
+        cells[m.key] = {
+          status: cellStatus,
+          amount: payment.amount,
+          amountPaid: payment.amountPaid,
+          delayPenalty: payment.delayPenalty,
+          paymentId: payment.id,
+          dueDate: payment.dueDate.toISOString().split('T')[0]
+        };
+
+        const totals = totalsByKey.get(m.key)!;
+        totals.expected += payment.amount + payment.delayPenalty;
+        totals.collected += payment.amountPaid;
+      }
+
+      return {
+        inquilinoId: inq.id,
+        name: inq.name,
+        status: inq.status,
+        roomNumber: inq.room?.roomNumber,
+        propertyName: inq.room?.property?.name,
+        cells,
+        totalDebt: debtByInquilino.get(inq.id) || 0
+      };
+    });
+
+    res.json({
+      months: months.map((m) => ({ key: m.key, label: formatScheduleMonthLabel(m.year, m.month), isCurrent: isCurrentMonthKey(m.key) })),
+      inquilinos: inquilinosDto,
+      totals: Array.from(totalsByKey.values())
+    });
+  } catch (error) {
+    console.error('Error en getPaymentSchedule:', error);
+    res.status(500).json({ error: 'Error al obtener el cronograma de pagos.' });
+  }
+};
+
 export const exportPaymentsReport = async (req: Request, res: Response): Promise<void> => {
   // Retornar un simple resumen para emular la descarga de reporte
   res.setHeader('Content-Type', 'text/csv');

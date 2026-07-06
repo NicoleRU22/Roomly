@@ -110,6 +110,7 @@ export const getMyInfo = async (req: Request, res: Response): Promise<void> => {
 export const createInquilino = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
   const userRole = req.userRole;
+  const creatorUserId = req.userId!;
 
   if (userRole === 'INQUILINO') {
     res.status(403).json({ error: 'Acceso denegado. No tienes permisos para crear inquilinos.' });
@@ -228,6 +229,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
 
       // 5. Crear Usuario para login si no existe
       let tenantUser = await tx.usuario.findUnique({ where: { email: normalizedEmail } });
+      const isNewTenantUser = !tenantUser;
       if (!tenantUser) {
         tenantUser = await tx.usuario.create({
           data: {
@@ -236,6 +238,18 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
             firstName: name,
             role: 'INQUILINO',
             tenantId
+          }
+        });
+      }
+
+      // 5.1 Enviar las credenciales de acceso por mensajería interna (solo si la cuenta es nueva)
+      if (isNewTenantUser && tenantUser) {
+        await tx.mensaje.create({
+          data: {
+            tenantId,
+            senderId: creatorUserId,
+            receiverId: tenantUser.id,
+            content: `¡Bienvenido(a) a Roomly, ${name}! Estas son tus credenciales de acceso:\n\nUsuario: ${normalizedEmail}\nContraseña temporal: ${plainPass}\n\nTe recomendamos iniciar sesión y cambiar tu contraseña desde tu perfil.`
           }
         });
       }

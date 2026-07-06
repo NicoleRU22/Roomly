@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, CheckCircle, XCircle, Search, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, AlertCircle, CheckCircle, XCircle, Search, RefreshCw } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
 import ExcelJS from 'exceljs';
@@ -47,6 +47,44 @@ interface Servicio {
   tipo: string;
 }
 
+interface ScheduleCell {
+  status: string;
+  amount?: number;
+  amountPaid?: number;
+  delayPenalty?: number;
+  paymentId?: number;
+  dueDate?: string;
+}
+
+interface ScheduleMonth {
+  key: string;
+  label: string;
+  isCurrent: boolean;
+}
+
+interface ScheduleInquilino {
+  inquilinoId: number;
+  name: string;
+  status: string;
+  roomNumber?: string;
+  propertyName?: string;
+  cells: Record<string, ScheduleCell>;
+  totalDebt: number;
+}
+
+interface ScheduleData {
+  months: ScheduleMonth[];
+  inquilinos: ScheduleInquilino[];
+  totals: { key: string; collected: number; expected: number }[];
+}
+
+const SCHEDULE_STATUS_CONFIG: Record<string, { icon: React.ReactNode; className: string }> = {
+  PAGADO: { icon: <Check className="w-3.5 h-3.5" />, className: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  PENDIENTE: { icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-amber-50 text-amber-600 border-amber-200' },
+  PARCIAL: { icon: <Clock className="w-3.5 h-3.5" />, className: 'bg-orange-50 text-orange-600 border-orange-200' },
+  VENCIDO: { icon: <AlertCircle className="w-3.5 h-3.5" />, className: 'bg-red-50 text-red-600 border-red-200' }
+};
+
 const PAGE_SIZE = 8;
 
 export const Pagos: React.FC = () => {
@@ -59,8 +97,16 @@ export const Pagos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Pestañas Propietario: 'recibos' | 'validaciones' | 'deudas'
-  const [activeTab, setActiveTab] = useState<'recibos' | 'validaciones' | 'deudas'>('recibos');
+  // Pestañas Propietario: 'recibos' | 'validaciones' | 'deudas' | 'cronograma'
+  const [activeTab, setActiveTab] = useState<'recibos' | 'validaciones' | 'deudas' | 'cronograma'>('recibos');
+
+  // Estados del Cronograma de Pagos (vista inquilino x mes)
+  const [schedule, setSchedule] = useState<ScheduleData | null>(null);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleSearch, setScheduleSearch] = useState('');
+  const [scheduleOnlyActive, setScheduleOnlyActive] = useState(true);
+  const [scheduleOnlyDebt, setScheduleOnlyDebt] = useState(false);
 
   // Estados Modal Registrar Pago Manual (Propietario)
   const [showCollectModal, setShowCollectModal] = useState(false);
@@ -165,6 +211,26 @@ export const Pagos: React.FC = () => {
   useEffect(() => {
     fetchPaymentsAndInquilinos();
   }, []);
+
+  const fetchSchedule = async () => {
+    setScheduleLoading(true);
+    setScheduleError(null);
+    try {
+      const res = await api.get('/payments/schedule');
+      setSchedule(res.data);
+    } catch (err: any) {
+      setScheduleError(err.response?.data?.error || 'No se pudo cargar el cronograma de pagos.');
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isTenant && activeTab === 'cronograma' && !schedule) {
+      fetchSchedule();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // Autocompletado inteligente del Monto al seleccionar Inquilino
   const handleInquilinoSelect = (idStr: string) => {
@@ -936,6 +1002,17 @@ export const Pagos: React.FC = () => {
     return matchesSearch;
   });
 
+  const filteredScheduleInquilinos = (schedule?.inquilinos || []).filter(inq => {
+    const term = scheduleSearch.toLowerCase();
+    const matchesSearch = term === '' ||
+                          inq.name.toLowerCase().includes(term) ||
+                          (inq.roomNumber && inq.roomNumber.toLowerCase().includes(term)) ||
+                          (inq.propertyName && inq.propertyName.toLowerCase().includes(term));
+    const matchesActive = !scheduleOnlyActive || inq.status === 'ACTIVO';
+    const matchesDebt = !scheduleOnlyDebt || inq.totalDebt > 0;
+    return matchesSearch && matchesActive && matchesDebt;
+  });
+
   const tenantPaymentsTotalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
   const ownerPaymentsTotalPages = Math.max(
     1, 
@@ -1452,10 +1529,16 @@ export const Pagos: React.FC = () => {
         >
           Deuda por Inquilino
         </button>
+        <button
+          onClick={() => setActiveTab('cronograma')}
+          className={`pb-3 font-bold transition-all relative ${activeTab === 'cronograma' ? 'text-purple-650 border-b-2 border-purple-650' : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          Cronograma de Pagos
+        </button>
       </div>
 
       {/* SECCIÓN DE FILTROS BÚSQUEDA DE PAGOS */}
-      {!isTenant && (
+      {!isTenant && activeTab !== 'cronograma' && (
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
           <div>
             <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Búsqueda General</label>
@@ -1939,6 +2022,170 @@ export const Pagos: React.FC = () => {
             onPageChange={setDebtsPage}
             itemLabel="inquilinos"
           />
+          </div>
+        </div>
+      )}
+
+      {/* CRONOGRAMA DE PAGOS */}
+      {activeTab === 'cronograma' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Cronograma de pagos</h3>
+            <p className="text-xs text-slate-500 font-medium">Vista general de todos tus inquilinos y su estado de pago mes a mes.</p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col lg:flex-row lg:items-center gap-4 lg:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre o propiedad..."
+                value={scheduleSearch}
+                onChange={(e) => setScheduleSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-purple-650"
+              />
+            </div>
+            <div className="flex items-center gap-5">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={scheduleOnlyActive}
+                  onChange={(e) => setScheduleOnlyActive(e.target.checked)}
+                  className="w-4 h-4 accent-purple-650 cursor-pointer"
+                />
+                Solo activos
+              </label>
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={scheduleOnlyDebt}
+                  onChange={(e) => setScheduleOnlyDebt(e.target.checked)}
+                  className="w-4 h-4 accent-purple-650 cursor-pointer"
+                />
+                Solo con deuda
+              </label>
+              <button
+                onClick={fetchSchedule}
+                disabled={scheduleLoading}
+                className="flex items-center py-2 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${scheduleLoading ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-600 px-1">
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center"><Check className="w-3 h-3" /></span>
+              Pagado
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center"><Clock className="w-3 h-3" /></span>
+              Pendiente
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center"><Clock className="w-3 h-3" /></span>
+              Parcial
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-red-50 border border-red-200 text-red-600 flex items-center justify-center"><AlertCircle className="w-3 h-3" /></span>
+              Vencido
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-slate-50 border border-slate-200 text-slate-400 flex items-center justify-center">—</span>
+              Sin contrato
+            </span>
+          </div>
+
+          {scheduleError && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-650 flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <span>{scheduleError}</span>
+            </div>
+          )}
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            {scheduleLoading && !schedule ? (
+              <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-650 mr-3" />
+                Cargando cronograma...
+              </div>
+            ) : !schedule || schedule.inquilinos.length === 0 ? (
+              <p className="text-center py-16 text-slate-400 text-sm">No hay inquilinos registrados todavía.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-purple-600 text-[11px] text-white font-bold uppercase tracking-wide">
+                      <th className="sticky left-0 z-10 bg-purple-600 px-5 py-3 min-w-[180px] border-r border-purple-500">Inquilino</th>
+                      {schedule.months.map(m => (
+                        <th key={m.key} className={`px-3 py-3 text-center min-w-[64px] border-r border-purple-500 ${m.isCurrent ? 'bg-purple-700' : ''}`}>
+                          {m.label}
+                        </th>
+                      ))}
+                      <th className="px-5 py-3 text-right min-w-[110px]">Deuda</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-150">
+                    {filteredScheduleInquilinos.length === 0 ? (
+                      <tr>
+                        <td colSpan={schedule.months.length + 2} className="text-center py-12 text-slate-400 text-sm">
+                          No hay inquilinos que coincidan con la búsqueda.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredScheduleInquilinos.map(inq => (
+                        <tr key={inq.inquilinoId} className="hover:bg-slate-50/40 transition-colors">
+                          <td className="sticky left-0 z-10 bg-white px-5 py-3 border-r border-slate-150">
+                            <button onClick={() => handleOpenTimeline(inq.inquilinoId, inq.name)} className="text-left group">
+                              <p className="font-bold text-slate-800 text-sm group-hover:text-purple-650">{inq.name}</p>
+                              <p className="text-[11px] text-purple-500 font-semibold">{inq.roomNumber || inq.propertyName || '—'}</p>
+                            </button>
+                          </td>
+                          {schedule.months.map(m => {
+                            const cell = inq.cells[m.key];
+                            const config = cell && SCHEDULE_STATUS_CONFIG[cell.status];
+                            return (
+                              <td key={m.key} className={`px-3 py-3 text-center border-r border-slate-100 ${m.isCurrent ? 'bg-purple-50/40' : ''}`}>
+                                {config ? (
+                                  <span
+                                    title={cell.amount !== undefined ? `S/. ${cell.amount.toFixed(2)}${cell.dueDate ? ` — vence ${formatDate(cell.dueDate)}` : ''}` : undefined}
+                                    className={`inline-flex items-center justify-center w-7 h-7 rounded-lg border ${config.className}`}
+                                  >
+                                    {config.icon}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className={`px-5 py-3 text-right font-mono font-bold ${inq.totalDebt > 0 ? 'text-red-650' : 'text-slate-400'}`}>
+                            S/. {inq.totalDebt.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {filteredScheduleInquilinos.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-slate-50 text-xs font-bold text-slate-600 border-t-2 border-slate-200">
+                        <td className="sticky left-0 z-10 bg-slate-50 px-5 py-3 border-r border-slate-150">Cobrado / Esperado</td>
+                        {schedule.totals.map(t => (
+                          <td key={t.key} className="px-3 py-3 text-center border-r border-slate-100 whitespace-nowrap">
+                            <span className="text-emerald-650">S/{t.collected.toFixed(0)}</span>
+                            <span className="text-slate-400"> / </span>
+                            <span className="text-slate-600">S/{t.expected.toFixed(0)}</span>
+                          </td>
+                        ))}
+                        <td className="px-5 py-3" />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

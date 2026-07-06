@@ -1200,7 +1200,7 @@ export const Inquilinos: React.FC = () => {
               </div>
 
               <div className="p-3.5 bg-purple-50 text-purple-700 border border-purple-100 rounded-xl text-[10px] text-center font-medium leading-normal">
-                Las credenciales también han sido registradas para el envío simulado de correos y guardadas en cache local. Comparte estos accesos con el inquilino para su primer inicio de sesión.
+                Estas credenciales ya se enviaron al inquilino por mensaje interno de Roomly (sección Mensajes). También puedes compartirlas por otro medio para su primer inicio de sesión.
               </div>
             </div>
 

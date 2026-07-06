@@ -8,7 +8,8 @@ import {
   exportPaymentsReport,
   deletePayment,
   sendDebtReminder,
-  runRecurringInvoices
+  runRecurringInvoices,
+  getPaymentSchedule
 } from './payment.controller';
 import { authMiddleware } from '../../core/middlewares/auth.middleware';
 import { tenantMiddleware } from '../../core/middlewares/tenant.middleware';
@@ -18,6 +19,7 @@ const router = Router();
 router.use(tenantMiddleware, authMiddleware);
 
 router.get('/payments', getAllPayments);
+router.get('/payments/schedule', getPaymentSchedule);
 router.get('/payments/export', exportPaymentsReport);
 router.post('/payments', createPayment);
 router.put('/payments/:id/record', recordPayment);
