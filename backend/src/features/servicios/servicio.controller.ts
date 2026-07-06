@@ -93,6 +93,20 @@ export const createServicio = async (req: Request, res: Response): Promise<void>
       if (room) rId = room.id;
     }
 
+    const duplicate = await prisma.servicio.findFirst({
+      where: {
+        tenantId,
+        propertyId: pId,
+        roomId: rId,
+        name: { equals: name.trim(), mode: 'insensitive' }
+      }
+    });
+
+    if (duplicate) {
+      res.status(409).json({ error: 'Ya existe un servicio con ese nombre en el mismo alcance.' });
+      return;
+    }
+
     const service = await prisma.servicio.create({
       data: {
         name,
@@ -153,6 +167,23 @@ export const updateServicio = async (req: Request, res: Response): Promise<void>
         const room = await prisma.room.findFirst({ where: { id: parseInt(roomId), tenantId } });
         if (room) rId = room.id;
       }
+    }
+
+    const finalName = name !== undefined ? name.trim() : existing.name;
+
+    const duplicate = await prisma.servicio.findFirst({
+      where: {
+        tenantId,
+        propertyId: pId,
+        roomId: rId,
+        name: { equals: finalName, mode: 'insensitive' },
+        id: { not: serviceId }
+      }
+    });
+
+    if (duplicate) {
+      res.status(409).json({ error: 'Ya existe un servicio con ese nombre en el mismo alcance.' });
+      return;
     }
 
     const updated = await prisma.servicio.update({

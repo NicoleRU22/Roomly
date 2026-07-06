@@ -184,10 +184,10 @@ export const Pagos: React.FC = () => {
     );
   };
 
-  // Suma de servicios adicionales seleccionados
+  // Suma de servicios adicionales seleccionados (los INCLUIDO ya forman parte de la renta y no se suman)
   const getSelectedServicesCost = () => {
     return servicios
-      .filter(s => selectedServiceIds.includes(s.id))
+      .filter(s => selectedServiceIds.includes(s.id) && s.tipo === 'ADICIONAL')
       .reduce((sum, s) => sum + s.cost, 0);
   };
 
