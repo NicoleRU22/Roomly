@@ -38,6 +38,7 @@ model Tenant {
   tickets       MaintenanceTicket[]
   notifications Notification[]
   inquilinoHistorial InquilinoHistorial[]
+  mensajes      Mensaje[]
 }
 
 model Usuario {
@@ -50,6 +51,8 @@ model Usuario {
   tenantId      Int
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   notifications Notification[]
+  sentMensajes     Mensaje[] @relation("MensajesEnviados")
+  receivedMensajes Mensaje[] @relation("MensajesRecibidos")
 }
 
 model Property {
@@ -205,6 +208,22 @@ model MaintenanceTicket {
   cost        Float?    // Costo de reparación
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Mensaje {
+  id         Int      @id @default(autoincrement())
+  tenantId   Int
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  senderId   Int
+  sender     Usuario  @relation("MensajesEnviados", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId Int
+  receiver   Usuario  @relation("MensajesRecibidos", fields: [receiverId], references: [id], onDelete: Cascade)
+  content    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, senderId, receiverId])
+  @@index([receiverId, isRead])
 }
 
 model Notification {

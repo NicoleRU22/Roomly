@@ -18,6 +18,7 @@ import { Servicios } from './features/servicios/pages/Servicios';
 import { Pagos } from './features/pagos/pages/Pagos';
 import { Contratos } from './features/contratos/pages/Contratos';
 import { Mantenimiento } from './features/mantenimiento/pages/Mantenimiento';
+import { Mensajes } from './features/mensajes/pages/Mensajes';
 import { Perfil } from './features/perfil/pages/Perfil';
 import { Configuracion } from './features/configuracion/pages/Configuracion';
 
@@ -62,6 +63,7 @@ function App() {
           <Route path="pagos" element={<Pagos />} />
           <Route path="contratos" element={<Contratos />} />
           <Route path="mantenimiento" element={<Mantenimiento />} />
+          <Route path="mensajes" element={<Mensajes />} />
           <Route path="perfil" element={<Perfil />} />
           <Route path="configuracion" element={<Configuracion />} />
           

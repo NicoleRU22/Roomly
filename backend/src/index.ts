@@ -12,6 +12,7 @@ import contractRoutes from './features/contratos/contract.routes';
 import maintenanceRoutes from './features/mantenimiento/maintenance.routes';
 import notificationRoutes from './features/notificaciones/notification.routes';
 import configuracionRoutes from './features/configuracion/configuracion.routes';
+import mensajeRoutes from './features/mensajes/mensaje.routes';
 import { generateRecurringInvoices } from './features/pagos/recurring.service';
 
 dotenv.config();
@@ -68,6 +69,7 @@ app.use('/api', contractRoutes);
 app.use('/api', maintenanceRoutes);
 app.use('/api', notificationRoutes);
 app.use('/api', configuracionRoutes);
+app.use('/api', mensajeRoutes);
 
 // Ruta de Salud/Prueba
 app.get('/health', (req: Request, res: Response) => {

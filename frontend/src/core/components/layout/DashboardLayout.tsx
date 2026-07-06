@@ -3,12 +3,13 @@ import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-d
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore';
 import { useNotifications } from '../../../features/notificaciones/useNotifications';
-import { 
-  Home, 
+import { useUnreadMensajesCount } from '../../../features/mensajes/useMensajes';
+import {
+  Home,
   LayoutGrid,
-  Users, 
-  LogOut, 
-  Menu, 
+  Users,
+  LogOut,
+  Menu,
   X,
   Bell,
   DollarSign,
@@ -17,7 +18,8 @@ import {
   Sun,
   Settings,
   Wrench,
-  Layers
+  Layers,
+  MessageCircle
 } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
@@ -51,6 +53,7 @@ export const DashboardLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications();
+  const { unreadCount: unreadMensajesCount } = useUnreadMensajesCount();
 
   const handleLogout = () => {
     logout();
@@ -80,6 +83,7 @@ export const DashboardLayout: React.FC = () => {
     { label: 'Pagos', path: `/${tenant?.slug}/pagos`, icon: <DollarSign className="w-5 h-5" /> },
     { label: 'Contratos', path: `/${tenant?.slug}/contratos`, icon: <FileText className="w-5 h-5" /> },
     { label: 'Mantenimiento', path: `/${tenant?.slug}/mantenimiento`, icon: <Wrench className="w-5 h-5" /> },
+    { label: 'Mensajes', path: `/${tenant?.slug}/mensajes`, icon: <MessageCircle className="w-5 h-5" />, badge: unreadMensajesCount },
   ];
 
   const currentLabel = navItems.find(item => location.pathname.startsWith(item.path))?.label || 'Panel de control';
@@ -126,7 +130,12 @@ export const DashboardLayout: React.FC = () => {
                 <span className={`mr-3.5 ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
                   {item.icon}
                 </span>
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {!!item.badge && (
+                  <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-purple-650 rounded-full text-[9px] font-black text-white leading-none">
+                    {item.badge > 9 ? '9+' : item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -176,7 +185,12 @@ export const DashboardLayout: React.FC = () => {
                     <span className={`mr-3.5 ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
                       {item.icon}
                     </span>
-                    {item.label}
+                    <span className="flex-1">{item.label}</span>
+                    {!!item.badge && (
+                      <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-purple-650 rounded-full text-[9px] font-black text-white leading-none">
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
