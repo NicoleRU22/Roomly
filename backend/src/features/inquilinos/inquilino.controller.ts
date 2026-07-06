@@ -116,11 +116,20 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
     return;
   }
 
-  const { name, document, email, phone, status, propertyId, roomId, password, entryDate, contractMonths } = req.body;
+  const { name, document, email, phone, status, propertyId, roomId, password, entryDate, contractMonths, diaCobro } = req.body;
 
   if (!name || !document || !email) {
     res.status(400).json({ error: 'Nombre, documento y correo son requeridos.' });
     return;
+  }
+
+  let parsedDiaCobro: number | null = null;
+  if (diaCobro !== undefined && diaCobro !== null && diaCobro !== '') {
+    parsedDiaCobro = parseInt(diaCobro);
+    if (isNaN(parsedDiaCobro) || parsedDiaCobro < 1 || parsedDiaCobro > 31) {
+      res.status(400).json({ error: 'El día de cobro debe ser un número entre 1 y 31.' });
+      return;
+    }
   }
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -192,6 +201,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
             startDate,
             endDate,
             amount: roomObj.price,
+            diaCobro: parsedDiaCobro,
             status: 'PENDIENTE_FIRMA',
             landlordName: tenantRecordForContract?.companyName || null,
             landlordRuc: tenantRecordForContract?.landlordRuc || null,
@@ -594,6 +604,10 @@ export const cambiarHabitacionInquilino = async (req: Request, res: Response): P
       });
 
       // 4. Finalizar el contrato anterior y crear uno nuevo para la nueva habitación
+      const previousContrato = await tx.contrato.findFirst({
+        where: { inquilinoId, status: { not: 'FINALIZADO' } },
+        orderBy: { createdAt: 'desc' }
+      });
       await tx.contrato.updateMany({
         where: { inquilinoId, status: { not: 'FINALIZADO' } },
         data: { status: 'FINALIZADO' }
@@ -613,6 +627,7 @@ export const cambiarHabitacionInquilino = async (req: Request, res: Response): P
           startDate,
           endDate,
           amount: newRoom.price,
+          diaCobro: previousContrato?.diaCobro ?? null,
           status: 'PENDIENTE_FIRMA',
           landlordName: tenantRecord?.companyName || null,
           landlordRuc: tenantRecord?.landlordRuc || null,

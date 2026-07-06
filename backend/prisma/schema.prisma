@@ -19,6 +19,7 @@ model Tenant {
   lateFeePerDay                  Float  @default(5.0)
   graceDays                      Int    @default(5)
   contractExpirationWarningDays  Int    @default(30)
+  defaultBillingDay              Int?   // Día del mes (1-31) usado como día de cobro para contratos sin uno propio configurado
 
   // Plantilla de recordatorio de WhatsApp (soporta {nombre} como placeholder)
   whatsappTemplate String? @default("Hola {nombre}, te saludamos de Roomly. Te recordamos que tienes cobros pendientes en la plataforma. Por favor ingresa para regularizarlos.")
@@ -178,6 +179,7 @@ model Contrato {
   startDate     DateTime
   endDate       DateTime
   amount        Float
+  diaCobro      Int?      // Día del mes (1-31) en que se genera el cobro. Si es null, se usa el día de startDate.
   status        String    @default("PENDIENTE_FIRMA") // "PENDIENTE_FIRMA", "VIGENTE", "FINALIZADO"
   landlordName  String?
   landlordRuc   String?

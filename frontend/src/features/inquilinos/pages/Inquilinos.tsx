@@ -138,6 +138,7 @@ export const Inquilinos: React.FC = () => {
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
   const [entryDate, setEntryDate] = useState<string>('');
   const [contractMonths, setContractMonths] = useState<string>('12');
+  const [diaCobro, setDiaCobro] = useState<string>('');
 
   // Estados Modal Mostrar Credenciales Creadas
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
@@ -295,6 +296,7 @@ export const Inquilinos: React.FC = () => {
     setSelectedRoomId('');
     setEntryDate(getTodayIso());
     setContractMonths('12');
+    setDiaCobro('');
     setShowModal(true);
   };
 
@@ -313,6 +315,7 @@ export const Inquilinos: React.FC = () => {
     setSelectedRoomId(inq.roomId ? String(inq.roomId) : '');
     setEntryDate(getTodayIso());
     setContractMonths('12');
+    setDiaCobro('');
     setShowModal(true);
   };
 
@@ -334,7 +337,8 @@ export const Inquilinos: React.FC = () => {
       propertyId: selectedPropertyId ? parseInt(selectedPropertyId) : null,
       roomId: selectedRoomId ? parseInt(selectedRoomId) : null,
       entryDate: entryDate || undefined,
-      contractMonths: contractMonths ? parseInt(contractMonths) : undefined
+      contractMonths: contractMonths ? parseInt(contractMonths) : undefined,
+      diaCobro: diaCobro ? parseInt(diaCobro) : undefined
     };
 
     try {
@@ -1097,16 +1101,31 @@ export const Inquilinos: React.FC = () => {
               </div>
 
               {!editingId && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1.5">Duración del contrato (meses)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="ej. 12"
-                    value={contractMonths}
-                    onChange={(e) => setContractMonths(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1.5">Duración del contrato (meses)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="ej. 12"
+                      value={contractMonths}
+                      onChange={(e) => setContractMonths(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1.5">Día de cobro (opcional)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="ej. 5"
+                      value={diaCobro}
+                      onChange={(e) => setDiaCobro(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Si no se especifica, se usa el día de la fecha de entrada.</p>
+                  </div>
                 </div>
               )}
 

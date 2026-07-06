@@ -10,6 +10,7 @@ interface ConfiguracionData {
   lateFeePerDay: number;
   graceDays: number;
   contractExpirationWarningDays: number;
+  defaultBillingDay: number | null;
   whatsappTemplate: string;
   notifyComprobantePendiente: boolean;
   notifyContratoFirmado: boolean;
@@ -215,7 +216,7 @@ export const Configuracion: React.FC = () => {
                 <Percent className="w-5 h-5 text-purple-600" />
                 <h3 className="text-sm font-bold text-slate-900">Reglas de cobro</h3>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1.5">Penalización por mora (S/. por día)</label>
                   <input
@@ -250,7 +251,22 @@ export const Configuracion: React.FC = () => {
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1.5">Día de cobro por defecto</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="ej. 5"
+                    value={data.defaultBillingDay ?? ''}
+                    onChange={(e) => setData({ ...data, defaultBillingDay: e.target.value ? parseInt(e.target.value) : null })}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650 font-mono"
+                  />
+                </div>
               </div>
+              <p className="text-[11px] text-slate-450">
+                Día del mes (1-31) en que se generará automáticamente el cobro a todos tus inquilinos que no tengan un día de cobro propio configurado en su contrato. Si un contrato tiene su propio día de cobro, ese valor tiene prioridad.
+              </p>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">

@@ -64,6 +64,7 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
       startDate: c.startDate.toISOString().split('T')[0],
       endDate: c.endDate.toISOString().split('T')[0],
       amount: c.amount,
+      diaCobro: c.diaCobro || undefined,
       status: c.status,
       landlordName: c.landlordName || undefined,
       landlordRuc: c.landlordRuc || undefined,
@@ -85,7 +86,7 @@ export const updateContrato = async (req: Request, res: Response): Promise<void>
   const tenantId = req.tenantId!;
   const userRole = req.userRole;
   const { id } = req.params;
-  const { startDate, endDate, amount, landlordName, landlordRuc, landlordAddress, specialTerms } = req.body;
+  const { startDate, endDate, amount, landlordName, landlordRuc, landlordAddress, specialTerms, diaCobro } = req.body;
 
   if (userRole === 'INQUILINO') {
     res.status(403).json({ error: 'Acceso denegado. Solo propietarios pueden editar contratos.' });
@@ -95,6 +96,15 @@ export const updateContrato = async (req: Request, res: Response): Promise<void>
   if (!startDate || !endDate || amount === undefined) {
     res.status(400).json({ error: 'Fecha inicio, fin y monto son requeridos.' });
     return;
+  }
+
+  let parsedDiaCobro: number | null = null;
+  if (diaCobro !== undefined && diaCobro !== null && diaCobro !== '') {
+    parsedDiaCobro = parseInt(diaCobro);
+    if (isNaN(parsedDiaCobro) || parsedDiaCobro < 1 || parsedDiaCobro > 31) {
+      res.status(400).json({ error: 'El día de cobro debe ser un número entre 1 y 31.' });
+      return;
+    }
   }
 
   try {
@@ -128,6 +138,7 @@ export const updateContrato = async (req: Request, res: Response): Promise<void>
         startDate: start,
         endDate: end,
         amount: parsedAmount,
+        diaCobro: parsedDiaCobro,
         landlordName: landlordName ? String(landlordName).trim() : null,
         landlordRuc: landlordRuc ? String(landlordRuc).replace(/\D/g, '') : null,
         landlordAddress: landlordAddress ? String(landlordAddress).trim() : null,
@@ -306,18 +317,27 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
     const tenantId = req.tenantId!;
     const userRole = req.userRole;
     const { id } = req.params;
-    const { startDate, endDate, amount } = req.body;
-  
+    const { startDate, endDate, amount, diaCobro } = req.body;
+
     if (userRole === 'INQUILINO') {
       res.status(403).json({ error: 'Acceso denegado. Solo propietarios pueden renovar contratos.' });
       return;
     }
-  
+
     if (!startDate || !endDate || !amount) {
       res.status(400).json({ error: 'Fecha inicio, fin y monto son requeridos.' });
       return;
     }
-  
+
+    let parsedDiaCobro: number | null = null;
+    if (diaCobro !== undefined && diaCobro !== null && diaCobro !== '') {
+      parsedDiaCobro = parseInt(diaCobro);
+      if (isNaN(parsedDiaCobro) || parsedDiaCobro < 1 || parsedDiaCobro > 31) {
+        res.status(400).json({ error: 'El día de cobro debe ser un número entre 1 y 31.' });
+        return;
+      }
+    }
+
     try {
       const contratoId = parseInt(id as string);
       const existing = await prisma.contrato.findFirst({
@@ -343,6 +363,7 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
             startDate: new Date(startDate),
             endDate: new Date(endDate),
             amount: parseFloat(amount),
+            diaCobro: parsedDiaCobro !== null ? parsedDiaCobro : existing.diaCobro,
             status: 'PENDIENTE_FIRMA',
             landlordName: existing.landlordName,
             landlordRuc: existing.landlordRuc,

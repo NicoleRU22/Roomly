@@ -4,7 +4,7 @@ import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, CheckCircle, XCircle, Search, RefreshCw } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 interface Payment {
   id: number;
@@ -443,27 +443,267 @@ export const Pagos: React.FC = () => {
     printWindow.document.close();
   };
 
-  // Exportar reporte de pagos como archivo Excel (todos, o solo los seleccionados si se pasa una lista)
-  const handleExportPayments = (list: Payment[] = payments) => {
-    const rows = list.map(p => ({
-      ID: p.id,
-      Inquilino: p.inquilinoName,
-      Habitacion: p.roomNumber || 'N/A',
-      Concepto: p.paymentType,
-      Descripcion: p.description || '',
-      'Monto Base': p.amount,
-      Mora: p.delayPenalty,
-      Pagado: p.amountPaid,
-      Vencimiento: formatDate(p.dueDate),
-      'Fecha Pago': p.status === 'PAGADO' ? getFechaPago(p) : 'N/A',
-      Estado: p.status,
-      'Estado Comprobante': p.receiptStatus || ''
-    }));
+  // Exportar reporte de pagos como archivo Excel profesional (todos, o solo los seleccionados si se pasa una lista)
+  const handleExportPayments = async (list: Payment[] = payments) => {
+    const BRAND_PURPLE = 'FFA855F7';
+    const BRAND_PURPLE_DARK = 'FF7C3AED';
+    const DARK_TEXT = 'FF1E293B';
+    const GRAY_LIGHT = 'FFF1F5F9';
+    const GREEN = 'FFDCFCE7';
+    const GREEN_TEXT = 'FF15803D';
+    const AMBER = 'FFFEF3C7';
+    const AMBER_TEXT = 'FFB45309';
+    const RED = 'FFFEE2E2';
+    const RED_TEXT = 'FFB91C1C';
+    const BLUE = 'FFDBEAFE';
+    const BLUE_TEXT = 'FF1D4ED8';
+    const GRAY_TEXT = 'FF64748B';
 
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pagos');
-    XLSX.writeFile(workbook, `reporte-pagos-roomly-${new Date().toISOString().split('T')[0]}.xlsx`);
+    const statusColors: Record<string, { fill: string; text: string; label: string }> = {
+      PAGADO: { fill: GREEN, text: GREEN_TEXT, label: 'Pagado' },
+      PENDIENTE: { fill: AMBER, text: AMBER_TEXT, label: 'Pendiente' },
+      VENCIDO: { fill: RED, text: RED_TEXT, label: 'Vencido' },
+      PAGADO_PARCIAL: { fill: BLUE, text: BLUE_TEXT, label: 'Pago Parcial' },
+      CANCELADO: { fill: GRAY_LIGHT, text: GRAY_TEXT, label: 'Cancelado' }
+    };
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Roomly';
+    workbook.created = new Date();
+
+    // ===================== HOJA 1: RESUMEN EJECUTIVO =====================
+    const summarySheet = workbook.addWorksheet('Resumen', {
+      views: [{ showGridLines: false }]
+    });
+    summarySheet.columns = [
+      { width: 4 }, { width: 24 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 4 }
+    ];
+
+    // Banner de marca
+    summarySheet.mergeCells('B2:G3');
+    const brandCell = summarySheet.getCell('B2');
+    brandCell.value = 'Roomly — Reporte de Control Financiero';
+    brandCell.font = { name: 'Calibri', size: 20, bold: true, color: { argb: 'FFFFFFFF' } };
+    brandCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    for (let r = 2; r <= 3; r++) {
+      for (let c = 2; c <= 7; c++) {
+        summarySheet.getCell(r, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_PURPLE_DARK } };
+      }
+    }
+
+    summarySheet.mergeCells('B4:G4');
+    const subtitleCell = summarySheet.getCell('B4');
+    subtitleCell.value = `Generado el ${new Date().toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' })}`;
+    subtitleCell.font = { italic: true, size: 10, color: { argb: GRAY_TEXT } };
+    summarySheet.getRow(5).height = 6;
+
+    // KPIs (tarjetas)
+    const paidList = list.filter(p => p.status === 'PAGADO');
+    const pendingList = list.filter(p => p.status !== 'PAGADO' && p.status !== 'CANCELADO');
+    const recaudado = paidList.reduce((sum, p) => sum + p.amountPaid, 0);
+    const pendiente = pendingList.reduce((sum, p) => sum + ((p.amount - p.amountPaid) + p.delayPenalty), 0);
+    const totalMora = list.reduce((sum, p) => sum + p.delayPenalty, 0);
+    const totalGeneral = recaudado + pendiente;
+    const tasa = totalGeneral > 0 ? Math.round((recaudado / totalGeneral) * 100) : 0;
+
+    const kpis: { label: string; value: string; fill: string; text: string }[] = [
+      { label: 'RECAUDADO', value: `S/. ${recaudado.toFixed(2)}`, fill: GREEN, text: GREEN_TEXT },
+      { label: 'PENDIENTE', value: `S/. ${pendiente.toFixed(2)}`, fill: AMBER, text: AMBER_TEXT },
+      { label: 'TASA DE COBRANZA', value: `${tasa}%`, fill: BLUE, text: BLUE_TEXT },
+      { label: 'TOTAL EN MORA', value: `S/. ${totalMora.toFixed(2)}`, fill: RED, text: RED_TEXT }
+    ];
+
+    const kpiRowTop = 6;
+    kpis.forEach((kpi, i) => {
+      const col = 2 + i; // B, C, D, E
+      const labelCell = summarySheet.getCell(kpiRowTop, col);
+      const valueCell = summarySheet.getCell(kpiRowTop + 1, col);
+      [labelCell, valueCell].forEach(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: kpi.fill } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      labelCell.value = kpi.label;
+      labelCell.font = { size: 9, bold: true, color: { argb: kpi.text } };
+      valueCell.value = kpi.value;
+      valueCell.font = { size: 15, bold: true, color: { argb: kpi.text } };
+      summarySheet.getRow(kpiRowTop + 1).height = 26;
+    });
+
+    // Desglose por estado (con barras de datos = mini gráfico visual)
+    const breakdownStart = kpiRowTop + 4;
+    summarySheet.mergeCells(`B${breakdownStart}:E${breakdownStart}`);
+    const breakdownTitle = summarySheet.getCell(`B${breakdownStart}`);
+    breakdownTitle.value = 'Desglose por Estado';
+    breakdownTitle.font = { size: 12, bold: true, color: { argb: DARK_TEXT } };
+
+    const headerRow = breakdownStart + 1;
+    ['Estado', 'Cantidad', 'Monto (S/.)', '% del Total'].forEach((h, i) => {
+      const cell = summarySheet.getCell(headerRow, 2 + i);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_PURPLE } };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    const statusOrder = ['PAGADO', 'PENDIENTE', 'VENCIDO', 'PAGADO_PARCIAL', 'CANCELADO'];
+    const totalMontoTodos = list.reduce((sum, p) => sum + (p.status === 'PAGADO' ? p.amountPaid : p.amount + p.delayPenalty), 0) || 1;
+    let dataBarStartRow = headerRow + 1;
+    statusOrder.forEach((status, idx) => {
+      const items = list.filter(p => p.status === status);
+      if (items.length === 0) return;
+      const monto = items.reduce((sum, p) => sum + (status === 'PAGADO' ? p.amountPaid : p.amount + p.delayPenalty), 0);
+      const pct = totalMontoTodos > 0 ? monto / totalMontoTodos : 0;
+      const rowIdx = dataBarStartRow;
+      const colors = statusColors[status];
+      summarySheet.getCell(rowIdx, 2).value = colors.label;
+      summarySheet.getCell(rowIdx, 3).value = items.length;
+      summarySheet.getCell(rowIdx, 4).value = Number(monto.toFixed(2));
+      summarySheet.getCell(rowIdx, 4).numFmt = '"S/." #,##0.00';
+      summarySheet.getCell(rowIdx, 5).value = pct;
+      summarySheet.getCell(rowIdx, 5).numFmt = '0.0%';
+      for (let c = 2; c <= 5; c++) {
+        const cell = summarySheet.getCell(rowIdx, c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFFFFFFF' : GRAY_LIGHT } };
+        cell.alignment = { horizontal: c === 2 ? 'left' : 'center' };
+        cell.font = { color: { argb: colors.text }, bold: c === 2 };
+      }
+      dataBarStartRow++;
+    });
+
+    // Barras de datos (chart-like) sobre la columna de % del total
+    if (dataBarStartRow > headerRow + 1) {
+      summarySheet.addConditionalFormatting({
+        ref: `E${headerRow + 1}:E${dataBarStartRow - 1}`,
+        rules: [
+          {
+            type: 'dataBar',
+            priority: 1,
+            gradient: true,
+            color: { argb: BRAND_PURPLE },
+            cfvo: [{ type: 'min' }, { type: 'max' }]
+          } as any
+        ]
+      });
+    }
+
+    // Notas al pie
+    const footerRow = dataBarStartRow + 2;
+    summarySheet.mergeCells(`B${footerRow}:F${footerRow}`);
+    const footerCell = summarySheet.getCell(`B${footerRow}`);
+    footerCell.value = `Reporte generado automáticamente por Roomly · ${list.length} recibo(s) incluido(s)`;
+    footerCell.font = { size: 9, italic: true, color: { argb: GRAY_TEXT } };
+
+    // ===================== HOJA 2: DETALLE DE PAGOS =====================
+    const sheet = workbook.addWorksheet('Detalle de Pagos', {
+      views: [{ state: 'frozen', ySplit: 1 }]
+    });
+
+    sheet.columns = [
+      { header: 'ID', key: 'id', width: 8 },
+      { header: 'Inquilino', key: 'inquilino', width: 28 },
+      { header: 'Habitación', key: 'habitacion', width: 12 },
+      { header: 'Concepto', key: 'concepto', width: 14 },
+      { header: 'Descripción', key: 'descripcion', width: 30 },
+      { header: 'Monto Base', key: 'montoBase', width: 14 },
+      { header: 'Mora', key: 'mora', width: 12 },
+      { header: 'Pagado', key: 'pagado', width: 14 },
+      { header: 'Vencimiento', key: 'vencimiento', width: 14 },
+      { header: 'Fecha Pago', key: 'fechaPago', width: 14 },
+      { header: 'Estado', key: 'estado', width: 16 },
+      { header: 'Comprobante', key: 'comprobante', width: 16 }
+    ];
+
+    // Estilo de cabecera
+    const headerRowRef = sheet.getRow(1);
+    headerRowRef.height = 24;
+    headerRowRef.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_PURPLE_DARK } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } } };
+    });
+
+    list.forEach((p, i) => {
+      const row = sheet.addRow({
+        id: p.id,
+        inquilino: p.inquilinoName,
+        habitacion: p.roomNumber || 'N/A',
+        concepto: p.paymentType,
+        descripcion: p.description || '',
+        montoBase: p.amount,
+        mora: p.delayPenalty,
+        pagado: p.amountPaid,
+        vencimiento: formatDate(p.dueDate),
+        fechaPago: p.status === 'PAGADO' ? getFechaPago(p) : 'N/A',
+        estado: statusColors[p.status]?.label || p.status,
+        comprobante: p.receiptStatus || '—'
+      });
+
+      const isEven = i % 2 === 0;
+      row.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+        };
+        cell.font = { color: { argb: DARK_TEXT }, size: 10.5 };
+        if (![6, 7, 8].includes(colNumber)) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFFFFFFF' : GRAY_LIGHT } };
+        }
+        cell.alignment = { vertical: 'middle', horizontal: colNumber === 5 ? 'left' : 'center' };
+      });
+
+      // Formato moneda en montos
+      [6, 7, 8].forEach(col => {
+        const cell = row.getCell(col);
+        cell.numFmt = '"S/." #,##0.00';
+        cell.font = { color: { argb: DARK_TEXT }, size: 10.5, bold: col === 8 };
+      });
+
+      // Color de estado
+      const statusStyle = statusColors[p.status];
+      if (statusStyle) {
+        const statusCell = row.getCell(11);
+        statusCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: statusStyle.fill } };
+        statusCell.font = { bold: true, color: { argb: statusStyle.text }, size: 10.5 };
+      }
+    });
+
+    // Fila de totales
+    const totalsRow = sheet.addRow({
+      id: '',
+      inquilino: '',
+      habitacion: '',
+      concepto: '',
+      descripcion: 'TOTALES',
+      montoBase: list.reduce((s, p) => s + p.amount, 0),
+      mora: list.reduce((s, p) => s + p.delayPenalty, 0),
+      pagado: list.reduce((s, p) => s + p.amountPaid, 0),
+      vencimiento: '',
+      fechaPago: '',
+      estado: '',
+      comprobante: ''
+    });
+    totalsRow.eachCell((cell, colNumber) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND_PURPLE } };
+      if ([6, 7, 8].includes(colNumber)) cell.numFmt = '"S/." #,##0.00';
+      cell.border = { top: { style: 'medium', color: { argb: BRAND_PURPLE_DARK } } };
+    });
+
+    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 12 } };
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reporte-pagos-roomly-${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Agrupamiento por inquilino para deudas

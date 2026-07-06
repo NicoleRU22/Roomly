@@ -18,6 +18,7 @@ interface Contrato {
   startDate: string;
   endDate: string;
   amount: number;
+  diaCobro?: number;
   status: string;
   landlordName?: string;
   landlordRuc?: string;
@@ -175,6 +176,7 @@ export const Contratos: React.FC = () => {
   const [newStartDate, setNewStartDate] = useState('');
   const [newEndDate, setNewEndDate] = useState('');
   const [newAmount, setNewAmount] = useState('');
+  const [newDiaCobro, setNewDiaCobro] = useState('');
   const [renewing, setRenewing] = useState(false);
 
   // Estados Modal de Edicion
@@ -183,6 +185,7 @@ export const Contratos: React.FC = () => {
   const [editStartDate, setEditStartDate] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [editAmount, setEditAmount] = useState('');
+  const [editDiaCobro, setEditDiaCobro] = useState('');
   const [editLandlordRuc, setEditLandlordRuc] = useState('');
   const [editLandlordName, setEditLandlordName] = useState('');
   const [editLandlordAddress, setEditLandlordAddress] = useState('');
@@ -284,6 +287,7 @@ export const Contratos: React.FC = () => {
     setNewEndDate(endStr);
 
     setNewAmount(String(contract.amount));
+    setNewDiaCobro(contract.diaCobro ? String(contract.diaCobro) : '');
     setShowRenewModal(true);
   };
 
@@ -292,6 +296,7 @@ export const Contratos: React.FC = () => {
     setEditStartDate(contract.startDate);
     setEditEndDate(contract.endDate);
     setEditAmount(String(contract.amount));
+    setEditDiaCobro(contract.diaCobro ? String(contract.diaCobro) : '');
     setEditLandlordRuc(contract.landlordRuc || '');
     setEditLandlordName(contract.landlordName || '');
     setEditLandlordAddress(contract.landlordAddress || '');
@@ -331,6 +336,7 @@ export const Contratos: React.FC = () => {
         startDate: editStartDate,
         endDate: editEndDate,
         amount: parseFloat(editAmount),
+        diaCobro: editDiaCobro ? parseInt(editDiaCobro) : null,
         landlordName: editLandlordName,
         landlordRuc: editLandlordRuc,
         landlordAddress: editLandlordAddress,
@@ -355,7 +361,8 @@ export const Contratos: React.FC = () => {
       await api.post(`/contratos/${contractToRenew.id}/renew`, {
         startDate: newStartDate,
         endDate: newEndDate,
-        amount: parseFloat(newAmount)
+        amount: parseFloat(newAmount),
+        diaCobro: newDiaCobro ? parseInt(newDiaCobro) : null
       });
       setShowRenewModal(false);
       fetchContratosAndProperties();
@@ -826,7 +833,7 @@ export const Contratos: React.FC = () => {
                 </div>
 
                 {/* Resumen Financiero */}
-                <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-2xl text-center border border-slate-100">
+                <div className="grid grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl text-center border border-slate-100">
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Renta</span>
                     <p className="text-xs font-extrabold text-slate-850 mt-1 font-mono">S/. {contract.amount.toFixed(2)}</p>
@@ -838,6 +845,10 @@ export const Contratos: React.FC = () => {
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Fin</span>
                     <p className={`text-[10px] font-bold mt-1 font-mono ${nearExpiration ? 'text-red-600' : 'text-slate-750'}`}>{formatDate(contract.endDate)}</p>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Día cobro</span>
+                    <p className="text-[10px] font-semibold text-slate-700 mt-1 font-mono">{contract.diaCobro || new Date(contract.startDate).getUTCDate()}</p>
                   </div>
                 </div>
 
@@ -1055,6 +1066,10 @@ export const Contratos: React.FC = () => {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Renta (S/.)</label>
                   <input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold" required />
                 </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Día de cobro</label>
+                  <input type="number" min="1" max="31" placeholder="ej. 5" value={editDiaCobro} onChange={(e) => setEditDiaCobro(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono" />
+                </div>
               </div>
 
               <div className="border border-slate-200 rounded-2xl p-4 space-y-4">
@@ -1148,16 +1163,30 @@ export const Contratos: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Monto de Renta Nuevo (S/.)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newAmount}
-                  onChange={(e) => setNewAmount(e.target.value)}
-                  className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Monto de Renta Nuevo (S/.)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={newAmount}
+                    onChange={(e) => setNewAmount(e.target.value)}
+                    className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono font-bold"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Día de cobro</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="ej. 5"
+                    value={newDiaCobro}
+                    onChange={(e) => setNewDiaCobro(e.target.value)}
+                    className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-mono"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end space-x-3 pt-2">

@@ -23,6 +23,7 @@ export const getConfiguracion = async (req: Request, res: Response): Promise<voi
       lateFeePerDay: tenant.lateFeePerDay,
       graceDays: tenant.graceDays,
       contractExpirationWarningDays: tenant.contractExpirationWarningDays,
+      defaultBillingDay: tenant.defaultBillingDay || null,
       whatsappTemplate: tenant.whatsappTemplate || '',
       notifyComprobantePendiente: tenant.notifyComprobantePendiente,
       notifyContratoFirmado: tenant.notifyContratoFirmado,
@@ -54,6 +55,7 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
     lateFeePerDay,
     graceDays,
     contractExpirationWarningDays,
+    defaultBillingDay,
     whatsappTemplate,
     notifyComprobantePendiente,
     notifyContratoFirmado,
@@ -62,6 +64,14 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
     ownerLastName,
     ownerEmail
   } = req.body;
+
+  if (defaultBillingDay !== undefined && defaultBillingDay !== null && defaultBillingDay !== '') {
+    const parsedDay = parseInt(defaultBillingDay);
+    if (isNaN(parsedDay) || parsedDay < 1 || parsedDay > 31) {
+      res.status(400).json({ error: 'El día de cobro por defecto debe ser un número entre 1 y 31.' });
+      return;
+    }
+  }
 
   if (ownerFirstName !== undefined && !String(ownerFirstName).trim()) {
     res.status(400).json({ error: 'El nombre del propietario no puede estar vacío.' });
@@ -96,6 +106,7 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
           lateFeePerDay: lateFeePerDay !== undefined && lateFeePerDay !== null ? parseFloat(lateFeePerDay) : undefined,
           graceDays: graceDays !== undefined && graceDays !== null ? parseInt(graceDays) : undefined,
           contractExpirationWarningDays: contractExpirationWarningDays !== undefined && contractExpirationWarningDays !== null ? parseInt(contractExpirationWarningDays) : undefined,
+          defaultBillingDay: defaultBillingDay !== undefined ? (defaultBillingDay === null || defaultBillingDay === '' ? null : parseInt(defaultBillingDay)) : undefined,
           whatsappTemplate: whatsappTemplate ?? undefined,
           notifyComprobantePendiente: notifyComprobantePendiente !== undefined ? Boolean(notifyComprobantePendiente) : undefined,
           notifyContratoFirmado: notifyContratoFirmado !== undefined ? Boolean(notifyContratoFirmado) : undefined,
@@ -119,6 +130,7 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
       lateFeePerDay: updated.lateFeePerDay,
       graceDays: updated.graceDays,
       contractExpirationWarningDays: updated.contractExpirationWarningDays,
+      defaultBillingDay: updated.defaultBillingDay || null,
       whatsappTemplate: updated.whatsappTemplate || '',
       notifyComprobantePendiente: updated.notifyComprobantePendiente,
       notifyContratoFirmado: updated.notifyContratoFirmado,

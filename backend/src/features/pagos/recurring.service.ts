@@ -7,14 +7,21 @@ const MONTH_NAMES = [
 ];
 
 // Calcula la fecha de vencimiento del ciclo de facturación vigente para un contrato,
-// usando el día del mes en que inició el contrato como "día de aniversario".
-const getCurrentBillingDate = (startDate: Date, today: Date): Date => {
-  const billingDay = startDate.getUTCDate();
-  const candidate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), billingDay));
+// usando el día de cobro configurado (o, si no se configuró, el día del mes en que inició el contrato).
+const getCurrentBillingDate = (startDate: Date, today: Date, diaCobro?: number | null): Date => {
+  const billingDay = diaCobro || startDate.getUTCDate();
 
-  // Si el día de aniversario de este mes todavía no llega, el ciclo vigente es el del mes anterior.
+  const clampToMonth = (year: number, month: number, day: number): Date => {
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return new Date(Date.UTC(year, month, Math.min(day, daysInMonth)));
+  };
+
+  const candidate = clampToMonth(today.getUTCFullYear(), today.getUTCMonth(), billingDay);
+
+  // Si el día de cobro de este mes todavía no llega, el ciclo vigente es el del mes anterior.
   if (candidate.getTime() > today.getTime()) {
-    candidate.setUTCMonth(candidate.getUTCMonth() - 1);
+    const prevMonthDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+    return clampToMonth(prevMonthDate.getUTCFullYear(), prevMonthDate.getUTCMonth(), billingDay);
   }
   return candidate;
 };
@@ -37,6 +44,12 @@ export const generateRecurringInvoices = async (tenantId?: number): Promise<{ cr
     include: { inquilino: true, room: true }
   });
 
+  const tenants = await prisma.tenant.findMany({
+    where: { id: { in: [...new Set(contratos.map((c) => c.tenantId))] } },
+    select: { id: true, defaultBillingDay: true }
+  });
+  const defaultBillingDayByTenant = new Map(tenants.map((t) => [t.id, t.defaultBillingDay]));
+
   let created = 0;
 
   for (const contrato of contratos) {
@@ -48,7 +61,8 @@ export const generateRecurringInvoices = async (tenantId?: number): Promise<{ cr
     if (startDate.getTime() > today.getTime()) continue; // el contrato aún no empieza
     if (endDate.getTime() < today.getTime()) continue; // el contrato ya venció
 
-    const billingDate = getCurrentBillingDate(startDate, today);
+    const diaCobro = contrato.diaCobro ?? defaultBillingDayByTenant.get(contrato.tenantId) ?? null;
+    const billingDate = getCurrentBillingDate(startDate, today, diaCobro);
     if (billingDate.getTime() < startDate.getTime()) continue; // el primer aniversario aún no llega
 
     const existing = await prisma.payment.findFirst({
