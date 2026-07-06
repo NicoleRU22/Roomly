@@ -14,17 +14,16 @@ interface Property {
   inquilinos?: any[];
 }
 
-const AVAILABLE_SERVICES = [
-  { id: 'wifi', label: 'WiFi' },
-  { id: 'Estacionamiento', label: 'Estacionamiento' },
-  { id: 'Gimnasio', label: 'Gimnasio' },
-  { id: 'Piscina', label: 'Piscina' }
-];
+interface ServicioOption {
+  id: number;
+  name: string;
+}
 
 export const Propiedades: React.FC = () => {
   const { tenant } = useParams();
   
   const [properties, setProperties] = useState<Property[]>([]);
+  const [servicios, setServicios] = useState<ServicioOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletePropId, setDeletePropId] = useState<number | null>(null);
@@ -59,8 +58,18 @@ export const Propiedades: React.FC = () => {
     }
   };
 
+  const fetchServicios = async () => {
+    try {
+      const res = await api.get('/servicios');
+      setServicios(res.data);
+    } catch (err) {
+      console.error('Error fetching servicios:', err);
+    }
+  };
+
   useEffect(() => {
     fetchProperties();
+    fetchServicios();
   }, []);
 
   const openCreateModal = () => {
@@ -333,37 +342,43 @@ export const Propiedades: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-2">Servicios ofrecidos (Selección múltiple)</label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {AVAILABLE_SERVICES.map((service) => {
-                    const isSelected = selectedServices.includes(service.id);
-                    return (
-                      <button
-                        type="button"
-                        key={service.id}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedServices(selectedServices.filter(s => s !== service.id));
-                          } else {
-                            setSelectedServices([...selectedServices, service.id]);
-                          }
-                        }}
-                        className={`flex items-center space-x-2.5 p-3 rounded-xl border text-xs font-bold transition-all text-left ${
-                          isSelected 
-                            ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7] shadow-sm shadow-purple-50' 
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          readOnly
-                          className="w-3.5 h-3.5 text-purple-600 border-slate-300 rounded focus:ring-purple-500 pointer-events-none"
-                        />
-                        <span>{service.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {servicios.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic">
+                    Aún no tienes servicios configurados. Ve a la sección "Servicios" para registrarlos.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {servicios.map((service) => {
+                      const isSelected = selectedServices.includes(service.name);
+                      return (
+                        <button
+                          type="button"
+                          key={service.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedServices(selectedServices.filter(s => s !== service.name));
+                            } else {
+                              setSelectedServices([...selectedServices, service.name]);
+                            }
+                          }}
+                          className={`flex items-center space-x-2.5 p-3 rounded-xl border text-xs font-bold transition-all text-left ${
+                            isSelected
+                              ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7] shadow-sm shadow-purple-50'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            className="w-3.5 h-3.5 text-purple-600 border-slate-300 rounded focus:ring-purple-500 pointer-events-none"
+                          />
+                          <span>{service.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -527,14 +542,11 @@ export const Propiedades: React.FC = () => {
                   {selectedServices.length === 0 ? (
                     <span className="text-[10px] text-slate-400 font-medium italic">Ningún servicio seleccionado</span>
                   ) : (
-                    selectedServices.map(srvId => {
-                      const srv = AVAILABLE_SERVICES.find(s => s.id === srvId);
-                      return (
-                        <span key={srvId} className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">
-                          {srv ? srv.label : srvId}
-                        </span>
-                      );
-                    })
+                    selectedServices.map(srvName => (
+                      <span key={srvName} className="px-2.5 py-0.5 bg-[#FAF4FF] text-[#A855F7] border border-purple-100 text-[10px] font-bold rounded-full">
+                        {srvName}
+                      </span>
+                    ))
                   )}
                 </div>
               </div>
@@ -676,14 +688,11 @@ export const Propiedades: React.FC = () => {
                     {(!prop.services || prop.services.trim() === '') ? (
                       <span className="text-[10px] text-slate-400 font-medium italic">Sin servicios asignados</span>
                     ) : (
-                      prop.services.split(',').map((srvId: string) => srvId.trim()).filter(Boolean).map((srvId: string) => {
-                        const srv = AVAILABLE_SERVICES.find(s => s.id === srvId);
-                        return (
-                          <span key={srvId} className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">
-                            {srv ? srv.label : srvId}
-                          </span>
-                        );
-                      })
+                      prop.services.split(',').map((srvName: string) => srvName.trim()).filter(Boolean).map((srvName: string) => (
+                        <span key={srvName} className="px-2.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-100 text-[10px] font-semibold rounded-full">
+                          {srvName}
+                        </span>
+                      ))
                     )}
                   </div>
                 </div>
@@ -751,37 +760,43 @@ export const Propiedades: React.FC = () => {
               {/* Servicios quick edit */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 mb-2">Servicios ofrecidos</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {AVAILABLE_SERVICES.map((service) => {
-                    const isSelected = selectedServices.includes(service.id);
-                    return (
-                      <button
-                        type="button"
-                        key={service.id}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedServices(selectedServices.filter(s => s !== service.id));
-                          } else {
-                            setSelectedServices([...selectedServices, service.id]);
-                          }
-                        }}
-                        className={`flex items-center space-x-2 p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
-                          isSelected 
-                            ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7]' 
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          readOnly
-                          className="w-3.5 h-3.5 text-purple-600 border-slate-300 rounded focus:ring-purple-500 pointer-events-none"
-                        />
-                        <span>{service.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {servicios.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic">
+                    Aún no tienes servicios configurados. Ve a la sección "Servicios" para registrarlos.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {servicios.map((service) => {
+                      const isSelected = selectedServices.includes(service.name);
+                      return (
+                        <button
+                          type="button"
+                          key={service.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedServices(selectedServices.filter(s => s !== service.name));
+                            } else {
+                              setSelectedServices([...selectedServices, service.name]);
+                            }
+                          }}
+                          className={`flex items-center space-x-2 p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
+                            isSelected
+                              ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7]'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            className="w-3.5 h-3.5 text-purple-600 border-slate-300 rounded focus:ring-purple-500 pointer-events-none"
+                          />
+                          <span>{service.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 pt-2">

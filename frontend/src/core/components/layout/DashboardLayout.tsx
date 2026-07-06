@@ -16,7 +16,8 @@ import {
   Moon,
   Sun,
   Settings,
-  Wrench
+  Wrench,
+  Layers
 } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
@@ -73,7 +74,8 @@ export const DashboardLayout: React.FC = () => {
     { label: 'Panel de control', path: `/${tenant?.slug}/dashboard`, icon: <LayoutGrid className="w-5 h-5" /> },
     ...(user?.role !== 'INQUILINO' ? [
       { label: 'Propiedades', path: `/${tenant?.slug}/propiedades`, icon: <Home className="w-5 h-5" /> },
-      { label: 'Inquilinos', path: `/${tenant?.slug}/inquilinos`, icon: <Users className="w-5 h-5" /> }
+      { label: 'Inquilinos', path: `/${tenant?.slug}/inquilinos`, icon: <Users className="w-5 h-5" /> },
+      { label: 'Servicios', path: `/${tenant?.slug}/servicios`, icon: <Layers className="w-5 h-5" /> }
     ] : []),
     { label: 'Pagos', path: `/${tenant?.slug}/pagos`, icon: <DollarSign className="w-5 h-5" /> },
     { label: 'Contratos', path: `/${tenant?.slug}/contratos`, icon: <FileText className="w-5 h-5" /> },

@@ -1,8 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
-import { Plus, Edit2, Trash2, Layers, Home } from 'lucide-react';
+import { Plus, Edit2, Trash2, Layers, Home, Droplet, Zap, Flame, Wifi, Tv, Sparkles, Car, Shield, Wrench, HelpCircle } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
+
+// Catálogo de servicios comunes para selección rápida.
+// El propietario también puede elegir "Otro" y escribir un nombre personalizado.
+const SERVICE_CATALOG: { name: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { name: 'Agua', icon: Droplet },
+  { name: 'Electricidad', icon: Zap },
+  { name: 'Gas', icon: Flame },
+  { name: 'Internet', icon: Wifi },
+  { name: 'TV Cable', icon: Tv },
+  { name: 'Aseo / Limpieza', icon: Sparkles },
+  { name: 'Parqueadero', icon: Car },
+  { name: 'Vigilancia', icon: Shield },
+  { name: 'Mantenimiento', icon: Wrench }
+];
+
+const OTRO = 'OTRO';
+
+const getServiceIcon = (name: string) => {
+  const match = SERVICE_CATALOG.find(s => s.name.toLowerCase() === name.toLowerCase());
+  return match ? match.icon : Layers;
+};
 
 interface Servicio {
   id: number;
@@ -44,6 +65,7 @@ export const Servicios: React.FC = () => {
   
   // Campos Formulario
   const [name, setName] = useState('');
+  const [selectedCatalog, setSelectedCatalog] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [cost, setCost] = useState('');
   const [tipo, setTipo] = useState('ADICIONAL');
@@ -101,6 +123,7 @@ export const Servicios: React.FC = () => {
   const openCreateModal = () => {
     setEditingId(null);
     setName('');
+    setSelectedCatalog(null);
     setDescription('');
     setCost('');
     setTipo('ADICIONAL');
@@ -113,6 +136,8 @@ export const Servicios: React.FC = () => {
   const openEditModal = (s: Servicio) => {
     setEditingId(s.id);
     setName(s.name);
+    const catalogMatch = SERVICE_CATALOG.find(c => c.name.toLowerCase() === s.name.toLowerCase());
+    setSelectedCatalog(catalogMatch ? catalogMatch.name : OTRO);
     setDescription(s.description || '');
     setCost(String(s.cost));
     setTipo(s.tipo);
@@ -124,7 +149,11 @@ export const Servicios: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !cost || !tipo) return;
+    if (!name) {
+      setError('Selecciona un servicio de la lista o elige "Otro" e ingresa un nombre.');
+      return;
+    }
+    if (!cost || !tipo) return;
     setSubmitting(true);
     setError(null);
 
@@ -213,7 +242,7 @@ export const Servicios: React.FC = () => {
               <tr className="bg-[#DFCEFC] text-sm text-slate-909 font-bold border-b border-slate-200">
                 <th className="px-6 py-4 font-bold border-r border-slate-200">Servicio</th>
                 <th className="px-6 py-4 font-bold border-r border-slate-200">Descripción</th>
-                <th className="px-6 py-4 font-bold border-r border-slate-200">Costo ($)</th>
+                <th className="px-6 py-4 font-bold border-r border-slate-200">Costo (S/)</th>
                 <th className="px-6 py-4 font-bold border-r border-slate-200">Tipo</th>
                 <th className="px-6 py-4 font-bold border-r border-slate-200">Alcance / Locación</th>
                 <th className="px-6 py-4 text-right">Acciones</th>
@@ -238,7 +267,7 @@ export const Servicios: React.FC = () => {
                       <td className="px-6 py-4 border-r border-slate-200">
                         <div className="flex items-center space-x-2.5">
                           <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                            <Layers className="w-3.5 h-3.5" />
+                            {React.createElement(getServiceIcon(ser.name), { className: 'w-3.5 h-3.5' })}
                           </div>
                           <span className="font-semibold text-slate-800">{ser.name}</span>
                         </div>
@@ -251,7 +280,7 @@ export const Servicios: React.FC = () => {
 
                       {/* Costo */}
                       <td className="px-6 py-4 font-semibold text-slate-800 border-r border-slate-200">
-                        ${ser.cost.toFixed(2)}
+                        S/ {ser.cost.toFixed(2)}
                       </td>
 
                       {/* Tipo */}
@@ -330,15 +359,51 @@ export const Servicios: React.FC = () => {
 
             <form onSubmit={handleSave} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-505 mb-1.5">Nombre del Servicio</label>
-                <input
-                  type="text"
-                  placeholder="ej: Internet Fibra, Consumo Luz Eléctrica"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-909 focus:outline-none focus:border-purple-650"
-                  required
-                />
+                <label className="block text-xs font-bold text-slate-505 mb-2">Servicio</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SERVICE_CATALOG.map((item) => {
+                    const isSelected = selectedCatalog === item.name;
+                    return (
+                      <button
+                        type="button"
+                        key={item.name}
+                        onClick={() => { setSelectedCatalog(item.name); setName(item.name); }}
+                        className={`flex flex-col items-center justify-center gap-1 py-2.5 px-1.5 rounded-xl border text-[11px] font-semibold transition-all ${
+                          isSelected
+                            ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7] shadow-sm shadow-purple-50'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        <span className="text-center leading-tight">{item.name}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedCatalog(OTRO); setName(''); }}
+                    className={`flex flex-col items-center justify-center gap-1 py-2.5 px-1.5 rounded-xl border text-[11px] font-semibold transition-all ${
+                      selectedCatalog === OTRO
+                        ? 'bg-[#FAF4FF] text-[#A855F7] border-[#A855F7] shadow-sm shadow-purple-50'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                    <span>Otro</span>
+                  </button>
+                </div>
+
+                {selectedCatalog === OTRO && (
+                  <input
+                    type="text"
+                    placeholder="ej: Administración, Lavandería"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full mt-2.5 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-909 focus:outline-none focus:border-purple-650"
+                    required
+                    autoFocus
+                  />
+                )}
               </div>
 
               <div>
@@ -354,7 +419,7 @@ export const Servicios: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-505 mb-1.5">Costo Mensual ($)</label>
+                  <label className="block text-xs font-bold text-slate-505 mb-1.5">Costo Mensual (S/)</label>
                   <input
                     type="number"
                     placeholder="ej: 15.00"
