@@ -4,6 +4,20 @@ import { saveBase64Image } from '../../core/utils/upload';
 import { notifyOwners, notifyInquilino } from '../notificaciones/notification.service';
 import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
+// SLA por defecto según prioridad: plazo máximo para resolver el ticket desde que se reporta.
+const SLA_DAYS_BY_PRIORITY: Record<string, number> = {
+  ALTA: 1,
+  MEDIA: 3,
+  BAJA: 7
+};
+
+const computeDueDate = (priority: string, from: Date): Date => {
+  const days = SLA_DAYS_BY_PRIORITY[priority] ?? SLA_DAYS_BY_PRIORITY.MEDIA;
+  const due = new Date(from);
+  due.setDate(due.getDate() + days);
+  return due;
+};
+
 export const getTickets = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
   const userRole = req.userRole;
@@ -39,7 +53,8 @@ export const getTickets = async (req: Request, res: Response): Promise<void> => 
         include: {
           inquilino: true,
           property: true,
-          room: true
+          room: true,
+          proveedor: true
         },
         orderBy: { createdAt: 'desc' },
         ...(isPaginated ? { skip, take: limit } : {})
@@ -63,6 +78,12 @@ export const getTickets = async (req: Request, res: Response): Promise<void> => 
       status: t.status,
       comments: t.comments || undefined,
       cost: t.cost || undefined,
+      proveedorId: t.proveedorId || undefined,
+      proveedorName: t.proveedor?.name || undefined,
+      proveedorSpecialty: t.proveedor?.specialty || undefined,
+      proveedorPhone: t.proveedor?.phone || undefined,
+      dueDate: t.dueDate ? t.dueDate.toISOString() : undefined,
+      isOverdue: t.status !== 'RESUELTO' && !!t.dueDate && new Date(t.dueDate).getTime() < Date.now(),
       createdAt: t.createdAt
     }));
 
@@ -106,6 +127,8 @@ export const createTicket = async (req: Request, res: Response): Promise<void> =
       imageUrl = saveBase64Image(image, 'tickets');
     }
 
+    const finalPriority = priority || 'MEDIA';
+
     const ticket = await prisma.maintenanceTicket.create({
       data: {
         tenantId,
@@ -115,8 +138,9 @@ export const createTicket = async (req: Request, res: Response): Promise<void> =
         title,
         description,
         imageUrl,
-        priority: priority || 'MEDIA',
-        status: 'PENDIENTE'
+        priority: finalPriority,
+        status: 'PENDIENTE',
+        dueDate: computeDueDate(finalPriority, new Date())
       }
     });
 
@@ -139,7 +163,7 @@ export const updateTicketStatus = async (req: Request, res: Response): Promise<v
   const tenantId = req.tenantId!;
   const userRole = req.userRole;
   const { id } = req.params;
-  const { status, priority, comments, cost } = req.body;
+  const { status, priority, comments, cost, proveedorId } = req.body;
 
   if (userRole === 'INQUILINO') {
     res.status(403).json({ error: 'Acceso denegado. Solo propietarios pueden actualizar los tickets.' });
@@ -157,13 +181,26 @@ export const updateTicketStatus = async (req: Request, res: Response): Promise<v
       return;
     }
 
+    if (proveedorId) {
+      const proveedor = await prisma.proveedor.findFirst({ where: { id: parseInt(proveedorId), tenantId } });
+      if (!proveedor) {
+        res.status(400).json({ error: 'Proveedor no encontrado.' });
+        return;
+      }
+    }
+
+    const finalPriority = priority || existing.priority;
+
     const updated = await prisma.maintenanceTicket.update({
       where: { id: ticketId },
       data: {
         status: status || existing.status,
-        priority: priority || existing.priority,
+        priority: finalPriority,
         comments: comments !== undefined ? comments : existing.comments,
-        cost: cost !== undefined ? parseFloat(cost) : existing.cost
+        cost: cost !== undefined ? parseFloat(cost) : existing.cost,
+        proveedorId: proveedorId !== undefined ? (proveedorId ? parseInt(proveedorId) : null) : existing.proveedorId,
+        // Recalcula el plazo SLA si cambia la prioridad, tomando como base la fecha original del reporte
+        dueDate: finalPriority !== existing.priority ? computeDueDate(finalPriority, existing.createdAt) : existing.dueDate
       }
     });
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { Plus, CheckCircle, AlertTriangle, Clock, Hammer, DollarSign, Image as ImageIcon } from 'lucide-react';
+import { Plus, CheckCircle, AlertTriangle, Clock, Hammer, DollarSign, Image as ImageIcon, Phone, UserCog } from 'lucide-react';
 import { Pagination } from '../../../core/components/ui/Pagination';
 
 interface Ticket {
@@ -18,7 +18,20 @@ interface Ticket {
   status: string;
   comments?: string;
   cost?: number;
+  proveedorId?: number;
+  proveedorName?: string;
+  proveedorSpecialty?: string;
+  proveedorPhone?: string;
+  dueDate?: string;
+  isOverdue?: boolean;
   createdAt: string;
+}
+
+interface Proveedor {
+  id: number;
+  name: string;
+  specialty: string;
+  phone: string;
 }
 
 const PAGE_SIZE = 8;
@@ -60,7 +73,25 @@ export const Mantenimiento: React.FC = () => {
   const [priorityUpdate, setPriorityUpdate] = useState('MEDIA');
   const [commentsUpdate, setCommentsUpdate] = useState('');
   const [costUpdate, setCostUpdate] = useState('');
+  const [proveedorIdUpdate, setProveedorIdUpdate] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Proveedores (directorio de plomeros, electricistas, etc.)
+  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [showNewProveedorForm, setShowNewProveedorForm] = useState(false);
+  const [newProveedorName, setNewProveedorName] = useState('');
+  const [newProveedorSpecialty, setNewProveedorSpecialty] = useState('');
+  const [newProveedorPhone, setNewProveedorPhone] = useState('');
+  const [savingProveedor, setSavingProveedor] = useState(false);
+
+  const fetchProveedores = async () => {
+    try {
+      const res = await api.get('/proveedores');
+      setProveedores(res.data);
+    } catch (err) {
+      console.error('Error al cargar proveedores:', err);
+    }
+  };
 
   const fetchTickets = async (page: number = currentPage) => {
     setLoading(true);
@@ -84,6 +115,9 @@ export const Mantenimiento: React.FC = () => {
 
   useEffect(() => {
     fetchTickets(currentPage);
+    if (user?.role !== 'INQUILINO') {
+      fetchProveedores();
+    }
   }, [currentPage]);
 
   // Si se resuelve/elimina el último ticket de una página, retrocede a la anterior
@@ -173,6 +207,8 @@ export const Mantenimiento: React.FC = () => {
     setPriorityUpdate(ticket.priority);
     setCommentsUpdate(ticket.comments || '');
     setCostUpdate(ticket.cost ? ticket.cost.toString() : '');
+    setProveedorIdUpdate(ticket.proveedorId ? ticket.proveedorId.toString() : '');
+    setShowNewProveedorForm(false);
     setShowManageModal(true);
   };
 
@@ -186,7 +222,8 @@ export const Mantenimiento: React.FC = () => {
         status: statusUpdate,
         priority: priorityUpdate,
         comments: commentsUpdate,
-        cost: costUpdate ? parseFloat(costUpdate) : null
+        cost: costUpdate ? parseFloat(costUpdate) : null,
+        proveedorId: proveedorIdUpdate || null
       });
       setShowManageModal(false);
       fetchTickets();
@@ -194,6 +231,32 @@ export const Mantenimiento: React.FC = () => {
       alert(err.response?.data?.error || 'Error al actualizar el ticket.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCreateProveedor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProveedorName.trim() || !newProveedorSpecialty.trim() || !newProveedorPhone.trim()) {
+      alert('Completa nombre, especialidad y teléfono del proveedor.');
+      return;
+    }
+    setSavingProveedor(true);
+    try {
+      const res = await api.post('/proveedores', {
+        name: newProveedorName.trim(),
+        specialty: newProveedorSpecialty.trim(),
+        phone: newProveedorPhone.trim()
+      });
+      setProveedores((prev) => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)));
+      setProveedorIdUpdate(res.data.id.toString());
+      setNewProveedorName('');
+      setNewProveedorSpecialty('');
+      setNewProveedorPhone('');
+      setShowNewProveedorForm(false);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error al registrar el proveedor.');
+    } finally {
+      setSavingProveedor(false);
     }
   };
 
@@ -288,7 +351,7 @@ export const Mantenimiento: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-[#DFCEFC] text-[10px] font-bold text-slate-800 uppercase tracking-wider">
+                  <tr className="border-b border-slate-200 bg-purple-600 text-[10px] font-bold text-white uppercase tracking-wider">
                     <th className="px-6 py-4">Asunto / Solicitud</th>
                     <th className="px-6 py-4">Ubicación</th>
                     {user?.role !== 'INQUILINO' && <th className="px-6 py-4">Inquilino</th>}
@@ -318,6 +381,12 @@ export const Mantenimiento: React.FC = () => {
                         </div>
                         <p className="text-slate-500 max-w-sm line-clamp-2">{ticket.description}</p>
                         <p className="text-[10px] text-slate-450 font-mono mt-0.5">Reportado: {new Date(ticket.createdAt).toLocaleDateString()}</p>
+                        {ticket.dueDate && (
+                          <p className={`text-[10px] font-mono font-bold ${ticket.isOverdue ? 'text-red-600' : 'text-slate-450'}`}>
+                            {ticket.isOverdue ? 'SLA vencido: ' : 'SLA vence: '}
+                            {new Date(ticket.dueDate).toLocaleDateString()}
+                          </p>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-slate-650 font-medium">
                         <span className="font-bold text-slate-800 block">{ticket.propertyName}</span>
@@ -340,6 +409,19 @@ export const Mantenimiento: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 space-y-1">
+                        {ticket.proveedorName ? (
+                          <p className="text-[10px] font-bold text-purple-700 flex items-center flex-wrap gap-x-1">
+                            <UserCog className="w-3 h-3 shrink-0" />
+                            {ticket.proveedorName} ({ticket.proveedorSpecialty})
+                            {ticket.proveedorPhone && (
+                              <a href={`tel:${ticket.proveedorPhone}`} className="text-emerald-600 hover:underline inline-flex items-center ml-1">
+                                <Phone className="w-2.5 h-2.5 mr-0.5" />{ticket.proveedorPhone}
+                              </a>
+                            )}
+                          </p>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Sin proveedor asignado.</span>
+                        )}
                         {ticket.comments ? (
                           <p className="text-slate-600 italic bg-slate-50 p-2 border border-slate-100 rounded-xl max-w-xs">
                             "{ticket.comments}"
@@ -514,6 +596,66 @@ export const Mantenimiento: React.FC = () => {
                     <option value="ALTA">Alta</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Proveedor Asignado</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewProveedorForm((v) => !v)}
+                    className="text-[10px] font-bold text-purple-600 hover:underline"
+                  >
+                    {showNewProveedorForm ? 'Cancelar' : '+ Nuevo proveedor'}
+                  </button>
+                </div>
+
+                {showNewProveedorForm ? (
+                  <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <input
+                      type="text"
+                      placeholder="Nombre (ej: Juan Pérez)"
+                      value={newProveedorName}
+                      onChange={(e) => setNewProveedorName(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Especialidad (ej: Plomería)"
+                        value={newProveedorSpecialty}
+                        onChange={(e) => setNewProveedorSpecialty(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Teléfono"
+                        value={newProveedorPhone}
+                        onChange={(e) => setNewProveedorPhone(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCreateProveedor}
+                      disabled={savingProveedor}
+                      className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold rounded-lg transition-all"
+                    >
+                      {savingProveedor ? 'Guardando...' : 'Guardar Proveedor'}
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={proveedorIdUpdate}
+                    onChange={(e) => setProveedorIdUpdate(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+                  >
+                    <option value="">Sin asignar</option>
+                    {proveedores.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} — {p.specialty} ({p.phone})</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>

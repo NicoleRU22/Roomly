@@ -10,8 +10,14 @@ interface Payment {
   id: number;
   inquilinoId: number;
   inquilinoName: string;
+  inquilinoDocument?: string;
+  inquilinoEmail?: string;
+  inquilinoPhone?: string;
+  inquilinoStatus?: string;
   roomId?: number;
   roomNumber?: string;
+  propertyName?: string;
+  propertyAddress?: string;
   amount: number;
   amountPaid: number;
   delayPenalty: number;
@@ -379,56 +385,189 @@ export const Pagos: React.FC = () => {
   const handlePrintReceipt = (pay: Payment) => {
     const printWindow = window.open('', '_blank', 'width=800,height=900');
     if (!printWindow) return;
+
+    const total = pay.amount + (pay.delayPenalty || 0);
+    const saldo = total - pay.amountPaid;
+
+    const STAMP_CONFIG: Record<string, { label: string; color: string }> = {
+      PAGADO: { label: 'PAGADO', color: '#10b981' },
+      PAGADO_PARCIAL: { label: 'PAGO PARCIAL', color: '#f59e0b' },
+      VENCIDO: { label: 'VENCIDO', color: '#ef4444' },
+      PENDIENTE: { label: 'PENDIENTE', color: '#64748b' },
+      CANCELADO: { label: 'CANCELADO', color: '#94a3b8' },
+    };
+    const stamp = STAMP_CONFIG[pay.status] || STAMP_CONFIG.PENDIENTE;
+    const now = new Date();
+    const generatedAt = `${formatDate(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const verificationCode = `RC-${String(pay.id).padStart(6, '0')}-${now.getFullYear()}`;
+
     const html = `
       <html>
         <head>
           <title>Recibo de Pago #${pay.id}</title>
-          <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+          <meta charset="utf-8" />
           <style>
-            body { font-family: 'Inter', sans-serif; padding: 40px; color: #1e293b; }
-            .receipt-container { border: 2px solid #e2e8f0; border-radius: 16px; padding: 32px; max-width: 600px; margin: 0 auto; }
-            .stamp { border: 3px solid #10b981; color: #10b981; font-weight: 800; text-transform: uppercase; font-size: 24px; padding: 8px 16px; display: inline-block; transform: rotate(-5deg); border-radius: 8px; margin-top: 20px; }
+            @page { margin: 0; }
+            * { box-sizing: border-box; }
+            body {
+              font-family: 'Segoe UI', 'Inter', -apple-system, sans-serif;
+              margin: 0;
+              padding: 32px 16px;
+              background: #f1f5f9;
+              color: #1e293b;
+            }
+            .receipt-container {
+              max-width: 640px;
+              margin: 0 auto;
+              background: #ffffff;
+              border-radius: 20px;
+              overflow: hidden;
+              box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+              border: 1px solid #e2e8f0;
+            }
+            .header {
+              background: linear-gradient(135deg, #7c3aed, #a855f7);
+              padding: 28px 32px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              color: #fff;
+            }
+            .header h1 { margin: 0; font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+            .header p { margin: 2px 0 0; font-size: 11px; opacity: 0.85; }
+            .header .doc-title { text-align: right; }
+            .header .doc-title h2 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
+            .header .doc-title p { margin: 2px 0 0; font-size: 11px; font-family: 'Courier New', monospace; opacity: 0.85; }
+            .badge {
+              display: inline-block;
+              margin-top: 6px;
+              font-size: 10px;
+              font-weight: 700;
+              letter-spacing: 0.5px;
+              padding: 3px 10px;
+              border-radius: 999px;
+              background: rgba(255,255,255,0.2);
+            }
+            .body { padding: 28px 32px; }
+            .section-title {
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: #94a3b8;
+              margin: 0 0 10px;
+            }
+            .info-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 10px 24px;
+              padding: 16px;
+              background: #f8fafc;
+              border-radius: 12px;
+              margin-bottom: 24px;
+            }
+            .info-item p { margin: 0; }
+            .info-item .label { font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+            .info-item .value { font-size: 13.5px; color: #1e293b; font-weight: 600; margin-top: 2px; }
+            .amounts { border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; margin-bottom: 24px; }
+            .amounts .row { display: flex; justify-content: space-between; padding: 12px 16px; font-size: 13.5px; border-bottom: 1px solid #f1f5f9; }
+            .amounts .row:last-child { border-bottom: none; }
+            .amounts .row.muted { color: #64748b; }
+            .amounts .row.penalty { color: #dc2626; font-weight: 600; }
+            .amounts .row.saldo { background: #fef3c7; color: #b45309; font-weight: 700; }
+            .amounts .row.total { background: #faf5ff; font-weight: 800; font-size: 15px; color: #6d28d9; }
+            .amount-value { font-family: 'Courier New', monospace; }
+            .footer { text-align: center; padding: 8px 32px 32px; }
+            .stamp {
+              display: inline-block;
+              border: 3px solid ${stamp.color};
+              color: ${stamp.color};
+              font-weight: 800;
+              text-transform: uppercase;
+              font-size: 22px;
+              letter-spacing: 1px;
+              padding: 8px 24px;
+              border-radius: 10px;
+              transform: rotate(-4deg);
+            }
+            .meta {
+              margin-top: 20px;
+              padding-top: 16px;
+              border-top: 1px dashed #cbd5e1;
+              font-size: 10px;
+              color: #94a3b8;
+              display: flex;
+              justify-content: space-between;
+            }
+            .disclaimer { font-size: 10px; color: #cbd5e1; margin-top: 10px; }
+            @media print {
+              body { background: #fff; padding: 0; }
+              .receipt-container { box-shadow: none; border-radius: 0; border: none; max-width: 100%; }
+            }
           </style>
         </head>
         <body>
           <div class="receipt-container">
-            <div class="flex justify-between items-center border-b pb-6">
+            <div class="header">
               <div>
-                <h1 class="text-2xl font-black text-purple-600">Roomly</h1>
-                <p class="text-xs text-slate-500 font-medium">Gestión de Alquileres Inteligente</p>
+                <h1>Roomly</h1>
+                <p>Gestión de Alquileres Inteligente</p>
               </div>
-              <div class="text-right">
-                <h2 class="text-lg font-bold text-slate-900">RECIBO DE PAGO</h2>
-                <p class="text-xs text-slate-500 font-mono">Nro: #R-${pay.id}</p>
-              </div>
-            </div>
-            <div class="my-6 space-y-3">
-              <p class="text-sm"><span class="font-semibold text-slate-700">Inquilino:</span> ${pay.inquilinoName}</p>
-              <p class="text-sm"><span class="font-semibold text-slate-700">Habitación:</span> ${pay.roomNumber || 'N/A'}</p>
-              <p class="text-sm"><span class="font-semibold text-slate-700">Concepto:</span> ${pay.paymentType} - ${pay.description || 'Renta regular'}</p>
-              <p class="text-sm"><span class="font-semibold text-slate-700">Fecha Vencimiento:</span> ${formatDate(pay.dueDate)}</p>
-              <p class="text-sm"><span class="font-semibold text-slate-700">Fecha de Pago:</span> ${getFechaPago(pay)}</p>
-              ${pay.receiptReference ? `<p class="text-sm"><span class="font-semibold text-slate-700">Referencia:</span> ${pay.receiptReference}</p>` : ''}
-            </div>
-            <div class="border-t border-b py-4 my-6">
-              <div class="flex justify-between text-sm py-1">
-                <span class="text-slate-500">Monto Base:</span>
-                <span class="font-mono font-semibold">S/. ${pay.amount.toFixed(2)}</span>
-              </div>
-              ${pay.delayPenalty > 0 ? `
-              <div class="flex justify-between text-sm py-1 text-red-650">
-                <span class="text-red-500 font-semibold">Mora por Retraso:</span>
-                <span class="font-mono text-red-600 font-semibold">+S/. ${pay.delayPenalty.toFixed(2)}</span>
-              </div>
-              ` : ''}
-              <div class="flex justify-between text-base font-bold pt-2 border-t mt-2">
-                <span class="text-slate-800">Total Cancelado:</span>
-                <span class="font-mono text-purple-700 text-lg">S/. ${pay.amountPaid.toFixed(2)}</span>
+              <div class="doc-title">
+                <h2>RECIBO DE PAGO</h2>
+                <p>Nro: #R-${pay.id}</p>
+                <span class="badge">${pay.paymentType}</span>
               </div>
             </div>
-            <div class="text-center pt-4">
-              <div class="stamp">PAGADO</div>
-              <p class="text-[10px] text-slate-400 mt-6">Gracias por su pago. Comprobante de pago verificado digitalmente.</p>
+            <div class="body">
+              <p class="section-title">Detalle</p>
+              <div class="info-grid">
+                <div class="info-item"><p class="label">Inquilino</p><p class="value">${pay.inquilinoName}</p></div>
+                <div class="info-item"><p class="label">Documento</p><p class="value">${pay.inquilinoDocument || 'N/A'}</p></div>
+                <div class="info-item"><p class="label">Correo</p><p class="value">${pay.inquilinoEmail || 'N/A'}</p></div>
+                <div class="info-item"><p class="label">Teléfono</p><p class="value">${pay.inquilinoPhone || 'N/A'}</p></div>
+                <div class="info-item"><p class="label">Propiedad</p><p class="value">${pay.propertyName || 'N/A'}</p></div>
+                <div class="info-item"><p class="label">Dirección</p><p class="value">${pay.propertyAddress || 'N/A'}</p></div>
+                <div class="info-item"><p class="label">Habitación</p><p class="value">${pay.roomNumber || 'N/A'}</p></div>
+                <div class="info-item"><p class="label">Concepto</p><p class="value">${pay.description || 'Renta regular'}</p></div>
+                <div class="info-item"><p class="label">Referencia</p><p class="value">${pay.receiptReference || '—'}</p></div>
+                <div class="info-item"><p class="label">Fecha Vencimiento</p><p class="value">${formatDate(pay.dueDate)}</p></div>
+                <div class="info-item"><p class="label">Fecha de Pago</p><p class="value">${getFechaPago(pay)}</p></div>
+              </div>
+
+              <p class="section-title">Resumen de Montos</p>
+              <div class="amounts">
+                <div class="row muted">
+                  <span>Monto Base</span>
+                  <span class="amount-value">S/. ${pay.amount.toFixed(2)}</span>
+                </div>
+                ${pay.delayPenalty > 0 ? `
+                <div class="row penalty">
+                  <span>Mora por Retraso</span>
+                  <span class="amount-value">+S/. ${pay.delayPenalty.toFixed(2)}</span>
+                </div>` : ''}
+                <div class="row">
+                  <span>Total Cancelado</span>
+                  <span class="amount-value">S/. ${pay.amountPaid.toFixed(2)}</span>
+                </div>
+                ${saldo > 0.009 ? `
+                <div class="row saldo">
+                  <span>Saldo Pendiente</span>
+                  <span class="amount-value">S/. ${saldo.toFixed(2)}</span>
+                </div>` : ''}
+                <div class="row total">
+                  <span>Total ${pay.status === 'PAGADO' ? 'Cancelado' : 'a Cancelar'}</span>
+                  <span class="amount-value">S/. ${total.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="footer">
+              <div class="stamp">${stamp.label}</div>
+              <div class="meta">
+                <span>Emitido: ${generatedAt}</span>
+                <span>Cód. verificación: ${verificationCode}</span>
+              </div>
+              <p class="disclaimer">Comprobante interno generado por Roomly. No constituye boleta ni factura electrónica ante SUNAT.</p>
             </div>
           </div>
           <script>
@@ -958,7 +1097,7 @@ export const Pagos: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse border border-slate-200">
               <thead>
-                <tr className="bg-[#DFCEFC] text-sm text-slate-800 font-bold border-b border-slate-200">
+                <tr className="bg-purple-600 text-sm text-white font-bold border-b border-slate-200">
                   <th className="px-6 py-4 border-r border-slate-200">Concepto</th>
                   <th className="px-6 py-4 border-r border-slate-200">Monto</th>
                   <th className="px-6 py-4 border-r border-slate-200">Mora</th>
@@ -1423,7 +1562,7 @@ export const Pagos: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse border border-slate-200">
               <thead>
-                <tr className="bg-[#DFCEFC] text-sm text-slate-800 font-bold border-b border-slate-200">
+                <tr className="bg-purple-600 text-sm text-white font-bold border-b border-slate-200">
                   <th className="px-4 py-4 border-r border-slate-200 w-10">
                     <input
                       type="checkbox"
@@ -1712,7 +1851,7 @@ export const Pagos: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse border border-slate-200">
               <thead>
-                <tr className="bg-[#DFCEFC] text-sm text-slate-800 font-bold border-b border-slate-200">
+                <tr className="bg-purple-600 text-sm text-white font-bold border-b border-slate-200">
                   <th className="px-4 py-4 border-r border-slate-200 w-10">
                     <input
                       type="checkbox"

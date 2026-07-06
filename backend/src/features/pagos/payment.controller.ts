@@ -57,7 +57,7 @@ export const getAllPayments = async (req: Request, res: Response): Promise<void>
       where: whereClause,
       include: {
         inquilino: true,
-        room: true
+        room: { include: { property: true } }
       },
       orderBy: { dueDate: 'asc' }
     });
@@ -81,7 +81,7 @@ export const getAllPayments = async (req: Request, res: Response): Promise<void>
           return await prisma.payment.update({
             where: { id: p.id },
             data: { delayPenalty: penalty, status: newStatus },
-            include: { inquilino: true, room: true }
+            include: { inquilino: true, room: { include: { property: true } } }
           });
         }
       }
@@ -92,8 +92,14 @@ export const getAllPayments = async (req: Request, res: Response): Promise<void>
       id: p.id,
       inquilinoId: p.inquilinoId,
       inquilinoName: p.inquilino.name,
+      inquilinoDocument: p.inquilino.document || undefined,
+      inquilinoEmail: p.inquilino.email || undefined,
+      inquilinoPhone: p.inquilino.phone || undefined,
+      inquilinoStatus: p.inquilino.status || undefined,
       roomId: p.roomId || undefined,
       roomNumber: p.room?.roomNumber || undefined,
+      propertyName: p.room?.property?.name || undefined,
+      propertyAddress: p.room?.property?.address || undefined,
       amount: p.amount,
       amountPaid: p.amountPaid,
       delayPenalty: p.delayPenalty,

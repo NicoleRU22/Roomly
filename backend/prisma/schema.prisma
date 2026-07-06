@@ -40,6 +40,7 @@ model Tenant {
   notifications Notification[]
   inquilinoHistorial InquilinoHistorial[]
   mensajes      Mensaje[]
+  proveedores   Proveedor[]
 }
 
 model Usuario {
@@ -181,6 +182,7 @@ model Contrato {
   amount        Float
   diaCobro      Int?      // Día del mes (1-31) en que se genera el cobro. Si es null, se usa el día de startDate.
   status        String    @default("PENDIENTE_FIRMA") // "PENDIENTE_FIRMA", "VIGENTE", "FINALIZADO"
+  expirationWarningSent Boolean @default(false) // Evita reenviar el aviso de vencimiento próximo en cada corrida del cron
   landlordName  String?
   landlordRuc   String?
   landlordAddress String?
@@ -191,25 +193,40 @@ model Contrato {
   updatedAt     DateTime  @updatedAt
 }
 
-model MaintenanceTicket {
-  id          Int       @id @default(autoincrement())
+model Proveedor {
+  id          Int                 @id @default(autoincrement())
   tenantId    Int
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  specialty   String              // Ej: "Plomería", "Electricidad", "General"
+  phone       String
+  notes       String?
+  createdAt   DateTime            @default(now())
+  tickets     MaintenanceTicket[]
+}
+
+model MaintenanceTicket {
+  id          Int        @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inquilinoId Int
-  inquilino   Inquilino @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
+  inquilino   Inquilino  @relation(fields: [inquilinoId], references: [id], onDelete: Cascade)
   propertyId  Int
-  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property    Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   roomId      Int?
-  room        Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  room        Room?      @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  proveedorId Int?
+  proveedor   Proveedor? @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
   title       String
   description String
-  imageUrl    String?   // Foto de la avería
-  priority    String    @default("MEDIA") // "ALTA", "MEDIA", "BAJA"
-  status      String    @default("PENDIENTE") // "PENDIENTE", "EN_PROGRESO", "RESUELTO"
-  comments    String?   // Seguimiento / notas del propietario (Ej: "El plomero irá mañana")
-  cost        Float?    // Costo de reparación
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  imageUrl    String?    // Foto de la avería
+  priority    String     @default("MEDIA") // "ALTA", "MEDIA", "BAJA"
+  status      String     @default("PENDIENTE") // "PENDIENTE", "EN_PROGRESO", "RESUELTO"
+  comments    String?    // Seguimiento / notas del propietario (Ej: "El plomero irá mañana")
+  cost        Float?     // Costo de reparación
+  dueDate     DateTime?  // Fecha límite SLA, calculada según la prioridad al crear el ticket
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
 model Mensaje {

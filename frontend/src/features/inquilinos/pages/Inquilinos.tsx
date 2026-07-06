@@ -638,7 +638,7 @@ export const Inquilinos: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse border border-slate-200">
             <thead>
-              <tr className="bg-[#DFCEFC] text-sm text-slate-900 font-bold border-b border-slate-200">
+              <tr className="bg-purple-600 text-sm text-white font-bold border-b border-slate-200">
                 <th className="px-6 py-4 border-r border-slate-200">Inquilino</th>
                 <th className="px-6 py-4 border-r border-slate-200">Propiedad</th>
                 <th className="px-6 py-4 border-r border-slate-200">Correo</th>

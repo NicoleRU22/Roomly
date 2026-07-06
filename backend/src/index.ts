@@ -14,6 +14,7 @@ import notificationRoutes from './features/notificaciones/notification.routes';
 import configuracionRoutes from './features/configuracion/configuracion.routes';
 import mensajeRoutes from './features/mensajes/mensaje.routes';
 import { generateRecurringInvoices } from './features/pagos/recurring.service';
+import { checkContractExpirations } from './features/contratos/contract-expiration.service';
 
 dotenv.config();
 
@@ -114,6 +115,19 @@ app.listen(PORT, () => {
   };
   runRecurringInvoicesJob();
   setInterval(runRecurringInvoicesJob, DAY_MS);
+
+  // Chequeo de vencimiento de contratos: avisa próximos a vencer y finaliza los vencidos
+  const runContractExpirationJob = () => {
+    checkContractExpirations()
+      .then(({ finalizados, avisos }) => {
+        if (finalizados > 0 || avisos > 0) {
+          console.log(`[Cron] Contratos finalizados: ${finalizados}, avisos de vencimiento enviados: ${avisos}`);
+        }
+      })
+      .catch((err) => console.error('[Cron] Error revisando vencimiento de contratos:', err));
+  };
+  runContractExpirationJob();
+  setInterval(runContractExpirationJob, DAY_MS);
 });
 
 // Trigger reload for Prisma client update
