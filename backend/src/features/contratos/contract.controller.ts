@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
 import { saveBase64Image } from '../../core/utils/upload';
 import { notifyOwners, notifyInquilino } from '../notificaciones/notification.service';
+import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
 export const getContratos = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -20,7 +21,8 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
         if (inquilino) {
           whereClause.inquilinoId = inquilino.id;
         } else {
-          res.json([]);
+          const { page, limit, isPaginated } = getPaginationParams(req);
+          res.json(isPaginated ? buildPaginatedResponse([], 0, page, limit) : []);
           return;
         }
       } else {
@@ -29,20 +31,26 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
       }
     }
 
-    const list = await prisma.contrato.findMany({
-      where: whereClause,
-      include: {
-        inquilino: true,
-        room: {
-          include: {
-            property: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const { page, limit, skip, isPaginated } = getPaginationParams(req);
 
-    res.json(list.map((c: any) => ({
+    const [list, total] = await Promise.all([
+      prisma.contrato.findMany({
+        where: whereClause,
+        include: {
+          inquilino: true,
+          room: {
+            include: {
+              property: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        ...(isPaginated ? { skip, take: limit } : {})
+      }),
+      isPaginated ? prisma.contrato.count({ where: whereClause }) : Promise.resolve(0)
+    ]);
+
+    const dtos = list.map((c: any) => ({
       id: c.id,
       tenantId: c.tenantId,
       inquilinoId: c.inquilinoId,
@@ -64,7 +72,9 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
       signatureUrl: c.signatureUrl || undefined,
       acceptedTerms: c.acceptedTerms,
       createdAt: c.createdAt
-    })));
+    }));
+
+    res.json(isPaginated ? buildPaginatedResponse(dtos, total, page, limit) : dtos);
   } catch (error) {
     console.error('Error en getContratos:', error);
     res.status(500).json({ error: 'Error al obtener contratos.' });

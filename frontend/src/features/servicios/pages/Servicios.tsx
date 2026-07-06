@@ -58,6 +58,7 @@ export const Servicios: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   // Estados Modal
   const [showModal, setShowModal] = useState(false);
@@ -77,15 +78,16 @@ export const Servicios: React.FC = () => {
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [deleteServiceId, setDeleteServiceId] = useState<number | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (page: number = currentPage) => {
     setLoading(true);
     setError(null);
     try {
       const [serRes, propRes] = await Promise.all([
-        api.get('/servicios'),
+        api.get('/servicios', { params: { page, limit: PAGE_SIZE } }),
         api.get('/properties')
       ]);
-      setServicios(serRes.data);
+      setServicios(serRes.data.data);
+      setTotal(serRes.data.total);
       setProperties(propRes.data);
     } catch (err: any) {
       console.error('Error fetching services:', err);
@@ -96,8 +98,15 @@ export const Servicios: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(currentPage);
+  }, [currentPage]);
+
+  // Si se elimina el último servicio de una página, retrocede a la anterior
+  useEffect(() => {
+    if (!loading && servicios.length === 0 && currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  }, [loading, servicios.length, currentPage]);
 
   // Cargar cuartos correspondientes cuando cambia la propiedad seleccionada
   useEffect(() => {
@@ -173,7 +182,7 @@ export const Servicios: React.FC = () => {
         await api.post('/servicios', payload);
       }
       setShowModal(false);
-      fetchData();
+      fetchData(currentPage);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Error al guardar el servicio.');
     } finally {
@@ -190,20 +199,11 @@ export const Servicios: React.FC = () => {
     try {
       await api.delete(`/servicios/${deleteServiceId}`);
       setDeleteServiceId(null);
-      fetchData();
+      fetchData(currentPage);
     } catch (err: any) {
       alert(err.response?.data?.error || 'Error al eliminar el servicio.');
     }
   };
-
-  const totalPages = Math.max(1, Math.ceil(servicios.length / PAGE_SIZE));
-  const paginatedServicios = servicios.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   if (loading && servicios.length === 0) {
     return (
@@ -256,7 +256,7 @@ export const Servicios: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                paginatedServicios.map((ser) => {
+                servicios.map((ser) => {
                   let badgeColor = 'bg-slate-50 text-slate-600 border-slate-200';
                   if (ser.tipo === 'ADICIONAL') badgeColor = 'bg-purple-50 text-purple-600 border-purple-100';
                   if (ser.tipo === 'INCLUIDO') badgeColor = 'bg-emerald-50 text-emerald-600 border-emerald-100';
@@ -337,7 +337,7 @@ export const Servicios: React.FC = () => {
         </div>
         <Pagination
           currentPage={currentPage}
-          totalItems={servicios.length}
+          totalItems={total}
           pageSize={PAGE_SIZE}
           onPageChange={setCurrentPage}
           itemLabel="servicios"

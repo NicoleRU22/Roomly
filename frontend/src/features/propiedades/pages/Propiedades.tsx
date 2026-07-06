@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../../../core/services/api';
 import { Plus, Trash2, MapPin, Building, Settings } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { Pagination } from '../../../core/components/ui/Pagination';
 
 interface Property {
   id: number;
@@ -19,6 +20,8 @@ interface ServicioOption {
   name: string;
 }
 
+const PAGE_SIZE = 4;
+
 export const Propiedades: React.FC = () => {
   const { tenant } = useParams();
   
@@ -27,6 +30,8 @@ export const Propiedades: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletePropId, setDeletePropId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   // Estados Modal Creación/Edición Tradicional (para Edición rápida)
   const [showModal, setShowModal] = useState(false);
@@ -44,12 +49,13 @@ export const Propiedades: React.FC = () => {
   const [roomsList, setRoomsList] = useState<{ roomNumber: string; floor: string; price: string; status: string }[]>([]);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
-  const fetchProperties = async () => {
+  const fetchProperties = async (page: number = currentPage) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get('/properties');
-      setProperties(res.data);
+      const res = await api.get('/properties', { params: { page, limit: PAGE_SIZE } });
+      setProperties(res.data.data);
+      setTotal(res.data.total);
     } catch (err: any) {
       console.error('Error fetching properties:', err);
       setError('No se pudieron cargar las propiedades.');
@@ -68,9 +74,19 @@ export const Propiedades: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchProperties();
+    fetchProperties(currentPage);
+  }, [currentPage]);
+
+  useEffect(() => {
     fetchServicios();
   }, []);
+
+  // Si se elimina la última propiedad de una página, retrocede a la anterior
+  useEffect(() => {
+    if (!loading && properties.length === 0 && currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  }, [loading, properties.length, currentPage]);
 
   const openCreateModal = () => {
     setEditingProperty(null);
@@ -113,7 +129,7 @@ export const Propiedades: React.FC = () => {
         await api.put(`/properties/${editingProperty.id}`, payload);
       }
       setShowModal(false);
-      fetchProperties();
+      fetchProperties(currentPage);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Error al guardar la propiedad.');
     } finally {
@@ -196,7 +212,11 @@ export const Propiedades: React.FC = () => {
       );
 
       setShowWizard(false);
-      fetchProperties();
+      if (currentPage === 1) {
+        fetchProperties(1);
+      } else {
+        setCurrentPage(1);
+      }
     } catch (err: any) {
       console.error('Error en wizard de creación:', err);
       setError(err.response?.data?.error || 'Error al registrar la propiedad y sus habitaciones.');
@@ -214,7 +234,7 @@ export const Propiedades: React.FC = () => {
     try {
       await api.delete(`/properties/${deletePropId}`);
       setDeletePropId(null);
-      fetchProperties();
+      fetchProperties(currentPage);
     } catch (err: any) {
       alert(err.response?.data?.error || 'Error al eliminar la propiedad.');
     }
@@ -718,6 +738,14 @@ export const Propiedades: React.FC = () => {
           })}
         </div>
       )}
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={total}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+        itemLabel="propiedades"
+      />
 
       {/* MODAL CREACIÓN / EDICIÓN TRADICIONAL (para Edición rápida) */}
       {showModal && (

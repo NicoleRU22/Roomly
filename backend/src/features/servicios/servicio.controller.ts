@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
+import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
 export const getAllServicios = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -24,11 +25,13 @@ export const getAllServicios = async (req: Request, res: Response): Promise<void
             whereClause.OR.push({ roomId: inquilino.roomId });
           }
           if (whereClause.OR.length === 0) {
-            res.json([]);
+            const { page, limit, isPaginated } = getPaginationParams(req);
+            res.json(isPaginated ? buildPaginatedResponse([], 0, page, limit) : []);
             return;
           }
         } else {
-          res.json([]);
+          const { page, limit, isPaginated } = getPaginationParams(req);
+          res.json(isPaginated ? buildPaginatedResponse([], 0, page, limit) : []);
           return;
         }
       } else {
@@ -37,15 +40,22 @@ export const getAllServicios = async (req: Request, res: Response): Promise<void
       }
     }
 
-    const list = await prisma.servicio.findMany({
-      where: whereClause,
-      include: {
-        property: true,
-        room: true
-      }
-    });
+    const { page, limit, skip, isPaginated } = getPaginationParams(req);
 
-    res.json(list.map((s: any) => ({
+    const [list, total] = await Promise.all([
+      prisma.servicio.findMany({
+        where: whereClause,
+        include: {
+          property: true,
+          room: true
+        },
+        orderBy: { id: 'desc' },
+        ...(isPaginated ? { skip, take: limit } : {})
+      }),
+      isPaginated ? prisma.servicio.count({ where: whereClause }) : Promise.resolve(0)
+    ]);
+
+    const dtos = list.map((s: any) => ({
       id: s.id,
       name: s.name,
       description: s.description || undefined,
@@ -55,7 +65,9 @@ export const getAllServicios = async (req: Request, res: Response): Promise<void
       propertyName: s.property?.name || undefined,
       roomId: s.roomId || undefined,
       roomNumber: s.room?.roomNumber || undefined
-    })));
+    }));
+
+    res.json(isPaginated ? buildPaginatedResponse(dtos, total, page, limit) : dtos);
   } catch (error) {
     console.error('Error en getAllServicios:', error);
     res.status(500).json({ error: 'Error al obtener servicios.' });

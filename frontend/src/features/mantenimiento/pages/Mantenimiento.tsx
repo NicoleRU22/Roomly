@@ -38,6 +38,7 @@ export const Mantenimiento: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   // Datos de inquilino para auto-llenar propiedades
   const [inquilinoInfo, setInquilinoInfo] = useState<any>(null);
@@ -61,12 +62,13 @@ export const Mantenimiento: React.FC = () => {
   const [costUpdate, setCostUpdate] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (page: number = currentPage) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get('/mantenimiento');
-      setTickets(res.data);
+      const res = await api.get('/mantenimiento', { params: { page, limit: PAGE_SIZE } });
+      setTickets(res.data.data);
+      setTotal(res.data.total);
 
       if (user?.role === 'INQUILINO') {
         const infoRes = await api.get('/inquilinos/me');
@@ -81,8 +83,15 @@ export const Mantenimiento: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchTickets();
-  }, []);
+    fetchTickets(currentPage);
+  }, [currentPage]);
+
+  // Si se resuelve/elimina el último ticket de una página, retrocede a la anterior
+  useEffect(() => {
+    if (!loading && tickets.length === 0 && currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  }, [loading, tickets.length, currentPage]);
 
   // Leer foto y convertir a Base64
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -221,15 +230,6 @@ export const Mantenimiento: React.FC = () => {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(tickets.length / PAGE_SIZE));
-  const paginatedTickets = tickets.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
   if (loading && tickets.length === 0) {
     return (
       <div className="flex items-center justify-center h-[50vh] text-slate-500">
@@ -299,7 +299,7 @@ export const Mantenimiento: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {paginatedTickets.map((ticket) => (
+                  {tickets.map((ticket) => (
                     <tr key={ticket.id} className="hover:bg-slate-50/50">
                       <td className="px-6 py-4 space-y-1">
                         <div className="flex items-center space-x-2">
@@ -374,7 +374,7 @@ export const Mantenimiento: React.FC = () => {
             </div>
             <Pagination
               currentPage={currentPage}
-              totalItems={tickets.length}
+              totalItems={total}
               pageSize={PAGE_SIZE}
               onPageChange={setCurrentPage}
               itemLabel="tickets"

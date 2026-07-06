@@ -12,7 +12,8 @@ import {
   CreditCard,
   CheckCircle2,
   AlertCircle,
-  Upload
+  Upload,
+  ArrowRight
 } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
@@ -60,6 +61,7 @@ interface Payment {
 }
 
 const PAGE_SIZE = 8;
+const PROPERTIES_PREVIEW_LIMIT = 4;
 const SERVICE_LABELS: Record<string, string> = {
   wifi: 'WiFi',
   WiFi: 'WiFi',
@@ -80,6 +82,7 @@ export const Dashboard: React.FC = () => {
   const [projectedRevenue, setProjectedRevenue] = useState(0); // Proyectado
   const [occupancyRate, setOccupancyRate] = useState(0); // Ocupación Global
   const [allPayments, setAllPayments] = useState<Payment[]>([]); // Pagos para alertas de mora
+  const [paymentStatusCounts, setPaymentStatusCounts] = useState({ pagado: 0, parcial: 0, pendiente: 0, vencido: 0 });
   const [urgentTickets, setUrgentTickets] = useState<any[]>([]); // Incidencias pendientes urgentes
   const [deletePropertyId, setDeletePropertyId] = useState<number | null>(null);
 
@@ -161,8 +164,13 @@ export const Dashboard: React.FC = () => {
 
         // Calcular lo recaudado
         let collected = 0;
+        const statusCounts = { pagado: 0, parcial: 0, pendiente: 0, vencido: 0 };
         pays.forEach((p: any) => {
           collected += p.amountPaid;
+          if (p.status === 'PAGADO') statusCounts.pagado++;
+          else if (p.status === 'PAGADO_PARCIAL') statusCounts.parcial++;
+          else if (p.status === 'VENCIDO') statusCounts.vencido++;
+          else statusCounts.pendiente++;
         });
 
         setProperties(props);
@@ -174,6 +182,7 @@ export const Dashboard: React.FC = () => {
         setMaintenanceRoomsCount(maintenanceRooms);
         setTotalRoomsCount(totalRooms);
         setAllPayments(pays);
+        setPaymentStatusCounts(statusCounts);
         setUrgentTickets(ticketsList.filter((t: any) => t.status === 'PENDIENTE' && t.priority === 'ALTA'));
       }
     } catch (err: any) {
@@ -710,6 +719,112 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* SECCIÓN ANALÍTICAS 2: ESTADO DE PAGOS Y RANKING DE PROPIEDADES */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Gráfico 3: Estado de Pagos (Donut Chart) */}
+        {(() => {
+          const totalPays = paymentStatusCounts.pagado + paymentStatusCounts.parcial + paymentStatusCounts.pendiente + paymentStatusCounts.vencido;
+          const circumference = 2 * Math.PI * 55;
+          const segments = [
+            { key: 'pagado', value: paymentStatusCounts.pagado, color: 'stroke-emerald-500', label: 'Pagados' },
+            { key: 'parcial', value: paymentStatusCounts.parcial, color: 'stroke-indigo-500', label: 'Parciales' },
+            { key: 'pendiente', value: paymentStatusCounts.pendiente, color: 'stroke-amber-500', label: 'Pendientes' },
+            { key: 'vencido', value: paymentStatusCounts.vencido, color: 'stroke-rose-500', label: 'Vencidos' }
+          ];
+          let offsetAcc = 0;
+          return (
+            <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-between space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Estado de Pagos</h3>
+                <p className="text-xs text-slate-400 mt-1">Distribución de recibos por estado.</p>
+              </div>
+
+              <div className="flex items-center justify-around">
+                <div className="relative w-32 h-32 flex items-center justify-center">
+                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 130 130">
+                    <circle cx="65" cy="65" r="55" className="stroke-slate-100 fill-none" strokeWidth="14" />
+                    {totalPays > 0 && segments.map((seg) => {
+                      if (seg.value === 0) return null;
+                      const dash = (seg.value / totalPays) * circumference;
+                      const dashArray = `${dash} ${circumference - dash}`;
+                      const dashOffset = -offsetAcc;
+                      offsetAcc += dash;
+                      return (
+                        <circle
+                          key={seg.key}
+                          cx="65"
+                          cy="65"
+                          r="55"
+                          className={`${seg.color} fill-none transition-all duration-1000 ease-out`}
+                          strokeWidth="14"
+                          strokeDasharray={dashArray}
+                          strokeDashoffset={dashOffset}
+                        />
+                      );
+                    })}
+                  </svg>
+                  <div className="absolute text-center space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recibos</span>
+                    <p className="text-xl font-black text-slate-800">{totalPays}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 text-[10px]">
+                  {segments.map((seg) => (
+                    <div key={seg.key} className="flex items-center space-x-2">
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${seg.color.replace('stroke-', 'bg-')}`} />
+                      <span className="font-bold text-slate-700">{seg.label} ({seg.value})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Gráfico 4: Ranking de Propiedades por Ingresos (Horizontal Bar Chart) */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-6">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Ranking de Propiedades</h3>
+            <p className="text-xs text-slate-400 mt-1">Ingresos mensuales generados por cada propiedad.</p>
+          </div>
+
+          {properties.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-6 text-center">Aún no hay propiedades registradas.</p>
+          ) : (
+            (() => {
+              const ranked = properties
+                .map((p: any) => ({
+                  id: p.id,
+                  name: p.name,
+                  revenue: p.rooms?.filter((r: any) => r.status === 'Ocupado').reduce((sum: number, r: any) => sum + r.price, 0) || 0
+                }))
+                .sort((a, b) => b.revenue - a.revenue)
+                .slice(0, 5);
+              const maxRevenue = Math.max(...ranked.map(r => r.revenue), 1);
+              return (
+                <div className="space-y-4">
+                  {ranked.map((p) => (
+                    <div key={p.id} className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-700 truncate max-w-[60%]">{p.name}</span>
+                        <span className="font-mono font-semibold text-slate-500">S/. {p.revenue.toFixed(2)}</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-500 to-purple-650 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${(p.revenue / maxRevenue) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          )}
+        </div>
+      </div>
+
       {/* Alertas Operativas (Morosidad y Tickets Urgentes) */}
       {(allPayments.filter(p => p.status === 'VENCIDO').length > 0 || urgentTickets.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -792,9 +907,9 @@ export const Dashboard: React.FC = () => {
             No tienes propiedades registradas aún. ¡Comienza agregando una!
           </div>
         ) : (
-          /* GRID DE PROPIEDADES */
+          /* GRID DE PROPIEDADES (VISTA PREVIA LIMITADA) */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {properties.map((prop) => {
+            {properties.slice(0, PROPERTIES_PREVIEW_LIMIT).map((prop) => {
               const roomsCount = prop.rooms?.length || 0;
               const occupiedRoomsCount = prop.rooms?.filter((r: any) => r.status === 'Ocupado').length || 0;
               const occupancyRate = roomsCount > 0 ? Math.round((occupiedRoomsCount / roomsCount) * 100) : 0;
@@ -880,6 +995,16 @@ export const Dashboard: React.FC = () => {
               );
             })}
           </div>
+        )}
+
+        {properties.length > PROPERTIES_PREVIEW_LIMIT && (
+          <button
+            onClick={() => navigate(`/${tenant}/propiedades`)}
+            className="w-full flex items-center justify-center py-3 px-4 border border-dashed border-purple-200 hover:bg-purple-50 text-purple-600 text-xs font-bold rounded-2xl transition-all"
+          >
+            Ver todas las propiedades ({properties.length})
+            <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+          </button>
         )}
       </div>
 

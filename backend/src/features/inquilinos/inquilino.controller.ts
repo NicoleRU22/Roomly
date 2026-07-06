@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma, { runInTransaction } from '../../core/db/prisma';
 import { sendSimulatedCredentialsEmail } from '../../core/utils/email';
+import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
 export const getAllInquilinos = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -21,13 +22,20 @@ export const getAllInquilinos = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    const list = await prisma.inquilino.findMany({
-      where: whereClause,
-      include: {
-        property: true,
-        room: true
-      }
-    });
+    const { page, limit, skip, isPaginated } = getPaginationParams(req);
+
+    const [list, total] = await Promise.all([
+      prisma.inquilino.findMany({
+        where: whereClause,
+        include: {
+          property: true,
+          room: true
+        },
+        orderBy: { id: 'desc' },
+        ...(isPaginated ? { skip, take: limit } : {})
+      }),
+      isPaginated ? prisma.inquilino.count({ where: whereClause }) : Promise.resolve(0)
+    ]);
 
     // Mapear al formato DTO para que el front lo consuma igual
     const dtos = list.map((i: any) => ({
@@ -46,7 +54,7 @@ export const getAllInquilinos = async (req: Request, res: Response): Promise<voi
       moveOutReason: i.moveOutReason || undefined
     }));
 
-    res.json(dtos);
+    res.json(isPaginated ? buildPaginatedResponse(dtos, total, page, limit) : dtos);
   } catch (error) {
     console.error('Error en getAllInquilinos:', error);
     res.status(500).json({ error: 'Error al obtener inquilinos.' });

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
+import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
 // ==========================================
 // PROPERTIES CRUD
@@ -22,7 +23,8 @@ export const getAllProperties = async (req: Request, res: Response): Promise<voi
         if (inquilino && inquilino.propertyId) {
           whereClause.id = inquilino.propertyId;
         } else {
-          res.json([]);
+          const { page, limit, isPaginated } = getPaginationParams(req);
+          res.json(isPaginated ? buildPaginatedResponse([], 0, page, limit) : []);
           return;
         }
       } else {
@@ -31,15 +33,22 @@ export const getAllProperties = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    const properties = await prisma.property.findMany({
-      where: whereClause,
-      include: {
-        rooms: true,
-        inquilinos: true
-      }
-    });
+    const { page, limit, skip, isPaginated } = getPaginationParams(req);
 
-    res.json(properties);
+    const [properties, total] = await Promise.all([
+      prisma.property.findMany({
+        where: whereClause,
+        include: {
+          rooms: true,
+          inquilinos: true
+        },
+        orderBy: { id: 'desc' },
+        ...(isPaginated ? { skip, take: limit } : {})
+      }),
+      isPaginated ? prisma.property.count({ where: whereClause }) : Promise.resolve(0)
+    ]);
+
+    res.json(isPaginated ? buildPaginatedResponse(properties, total, page, limit) : properties);
   } catch (error) {
     console.error('Error en getAllProperties:', error);
     res.status(500).json({ error: 'Error al obtener propiedades.' });
