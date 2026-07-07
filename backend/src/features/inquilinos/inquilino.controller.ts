@@ -335,7 +335,7 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
 
     const oldEmail = existing.email;
 
-    const result = await runInTransaction(async (tx: any) => {
+    const { updated: result, newAccountCredentials } = await runInTransaction(async (tx: any) => {
       // 1. Validar propiedad
       let pId: number | null = null;
       if (propertyId && !isNaN(parseInt(propertyId))) {
@@ -383,7 +383,8 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
         include: { property: true, room: true }
       });
 
-      // 4. Actualizar login de usuario
+      // 4. Actualizar login de usuario (o crearlo si el inquilino todavía no tenía cuenta de acceso)
+      let newAccountCredentials: { email: string; plainPass: string } | null = null;
       const existingUser = await tx.usuario.findUnique({ where: { email: oldEmail } });
       if (existingUser) {
         const dataToUpdate: any = {
@@ -397,10 +398,40 @@ export const updateInquilino = async (req: Request, res: Response): Promise<void
           where: { id: existingUser.id },
           data: dataToUpdate
         });
+      } else if (normalizedEmail) {
+        let plainPass = password;
+        if (!plainPass || plainPass.length < 6) {
+          const rand = Math.floor(1000 + Math.random() * 9000);
+          plainPass = `Roomly-${rand}`;
+        }
+        const hashedPassword = await bcrypt.hash(plainPass, 10);
+
+        await tx.usuario.create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            firstName: name,
+            role: 'INQUILINO',
+            tenantId,
+            emailVerified: true
+          }
+        });
+
+        newAccountCredentials = { email: normalizedEmail, plainPass };
       }
 
-      return updated;
+      return { updated, newAccountCredentials };
     });
+
+    // Si se creó una cuenta de acceso nueva durante la edición, enviar las credenciales al correo real.
+    if (newAccountCredentials) {
+      const tenantRecord = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      try {
+        await sendCredentialsEmail(newAccountCredentials.email, result.name, newAccountCredentials.plainPass, tenantRecord?.slug || '');
+      } catch (emailError) {
+        console.error('Error enviando correo de credenciales al inquilino (edición):', emailError);
+      }
+    }
 
     res.json({
       id: result.id,
