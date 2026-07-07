@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import api from '../../../core/services/api';
+import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
+import { useAuthStore } from '../../auth/store/useAuthStore';
 import { formatDate, formatLastActivity } from '../utils';
 
 interface UsuarioRow {
@@ -21,28 +24,45 @@ const ROLE_BADGE: Record<string, string> = {
 };
 
 export const AdminUsuarios: React.FC = () => {
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const [usuarios, setUsuarios] = useState<UsuarioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleFilter, setRoleFilter] = useState<string>('TODOS');
   const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<UsuarioRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const fetchUsuarios = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get('/admin/usuarios');
+      setUsuarios(res.data.usuarios || []);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'No se pudieron cargar los usuarios.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUsuarios = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await api.get('/admin/usuarios');
-        setUsuarios(res.data.usuarios || []);
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'No se pudieron cargar los usuarios.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchUsuarios();
   }, []);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/admin/usuarios/${deleteTarget.id}`);
+      setUsuarios((prev) => prev.filter((u) => u.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'No se pudo eliminar el usuario.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return usuarios.filter((u) => {
@@ -102,6 +122,7 @@ export const AdminUsuarios: React.FC = () => {
                 <th className="px-6 py-3 font-semibold">Verificado</th>
                 <th className="px-6 py-3 font-semibold">Último acceso</th>
                 <th className="px-6 py-3 font-semibold">Creado</th>
+                <th className="px-6 py-3 font-semibold text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -130,12 +151,33 @@ export const AdminUsuarios: React.FC = () => {
                     {u.lastLoginAt ? formatLastActivity(u.lastLoginAt) : <span className="text-slate-400">Nunca</span>}
                   </td>
                   <td className="px-6 py-3.5 text-muted-foreground whitespace-nowrap">{formatDate(u.createdAt)}</td>
+                  <td className="px-6 py-3.5 text-right">
+                    {u.role !== 'ADMIN' && u.id !== currentUserId && (
+                      <button
+                        onClick={() => setDeleteTarget(u)}
+                        title="Eliminar cuenta de acceso"
+                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Eliminar cuenta de acceso"
+        message={`¿Seguro que quieres eliminar la cuenta de acceso de ${deleteTarget?.firstName || ''}${deleteTarget?.lastName ? ' ' + deleteTarget.lastName : ''} (${deleteTarget?.email})? Esta acción no se puede deshacer. Útil para volver a probar el envío de credenciales por correo.`}
+        confirmText={deleting ? 'Eliminando...' : 'Eliminar'}
+        isDestructive
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

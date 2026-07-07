@@ -105,6 +105,43 @@ export const listUsuarios = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+// Elimina la cuenta de acceso de un usuario (típicamente un inquilino) para poder recrearla
+// desde cero y volver a probar el envío de credenciales por correo.
+export const deleteUsuario = async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const usuarioId = parseInt(String(id));
+
+  if (isNaN(usuarioId)) {
+    res.status(400).json({ error: 'ID de usuario inválido.' });
+    return;
+  }
+
+  if (usuarioId === req.userId) {
+    res.status(400).json({ error: 'No puedes eliminar tu propia cuenta de administrador.' });
+    return;
+  }
+
+  try {
+    const target = await prisma.usuario.findUnique({ where: { id: usuarioId } });
+    if (!target) {
+      res.status(404).json({ error: 'Usuario no encontrado.' });
+      return;
+    }
+
+    if (target.role === 'ADMIN') {
+      res.status(400).json({ error: 'No se puede eliminar una cuenta de administrador de la plataforma.' });
+      return;
+    }
+
+    await prisma.usuario.delete({ where: { id: usuarioId } });
+
+    res.json({ message: 'Usuario eliminado correctamente.' });
+  } catch (error) {
+    console.error('Error en deleteUsuario:', error);
+    res.status(500).json({ error: 'Error al eliminar el usuario.' });
+  }
+};
+
 // Tendencia de crecimiento: tenants y usuarios nuevos por semana, últimas `weeks` semanas (por defecto 12).
 export const getGrowth = async (req: Request, res: Response): Promise<void> => {
   try {
