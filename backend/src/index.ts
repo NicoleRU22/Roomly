@@ -13,6 +13,7 @@ import maintenanceRoutes from './features/mantenimiento/maintenance.routes';
 import notificationRoutes from './features/notificaciones/notification.routes';
 import configuracionRoutes from './features/configuracion/configuracion.routes';
 import mensajeRoutes from './features/mensajes/mensaje.routes';
+import adminRoutes from './features/admin/admin.routes';
 import { generateRecurringInvoices } from './features/pagos/recurring.service';
 import { checkContractExpirations } from './features/contratos/contract-expiration.service';
 
@@ -58,6 +59,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Rutas Públicas (Auth, Registro, Validaciones)
 app.use('/api/auth', authRoutes);
+
+// Ruta de administración de plataforma (rol ADMIN, sin tenantMiddleware).
+// Debe montarse antes que las rutas de negocio: esas usan router.use(tenantMiddleware, ...)
+// sin restricción de sub-ruta, así que interceptarían /api/admin/* si se registraran primero.
+app.use('/api/admin', adminRoutes);
 
 // Rutas del Negocio (Propiedades, Inquilinos, Pagos, Servicios)
 // Todas estas rutas están protegidas internamente en sus routers mediante:

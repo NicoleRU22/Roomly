@@ -10,6 +10,7 @@ model Tenant {
   id            Int                 @id @default(autoincrement())
   slug          String              @unique
   companyName   String              @map("company_name")
+  createdAt     DateTime            @default(now())
 
   // Configuración del negocio
   landlordRuc     String?
@@ -46,12 +47,18 @@ model Tenant {
 model Usuario {
   id            Int             @id @default(autoincrement())
   email         String          @unique
-  password      String
+  password      String?         // Nulo para cuentas creadas vía Google
+  googleId      String?         @unique
+  emailVerified Boolean         @default(false)
+  verificationToken       String?   @unique
+  verificationTokenExpiry DateTime?
   firstName     String
   lastName      String?
-  role          String          // "PROPIETARIO" o "INQUILINO"
-  tenantId      Int
-  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role          String          // "PROPIETARIO", "INQUILINO" o "ADMIN"
+  tenantId      Int?            // Nulo para el superadmin de plataforma (rol ADMIN, no pertenece a ningún tenant)
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  lastLoginAt   DateTime?       // Se actualiza en cada login exitoso (password o Google)
   notifications Notification[]
   sentMensajes     Mensaje[] @relation("MensajesEnviados")
   receivedMensajes Mensaje[] @relation("MensajesRecibidos")

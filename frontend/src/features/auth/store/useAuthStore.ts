@@ -18,7 +18,7 @@ interface AuthState {
   token: string | null;
   user: User | null;
   tenant: Tenant | null;
-  login: (token: string, user: User, tenant: Tenant) => void;
+  login: (token: string, user: User, tenant: Tenant | null) => void;
   updateUser: (partial: Partial<User>) => void;
   logout: () => void;
   isAuthenticated: () => boolean;

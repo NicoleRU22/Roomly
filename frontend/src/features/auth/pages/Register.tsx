@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
+import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -20,6 +21,7 @@ export const Register: React.FC = () => {
   // Estados de carga y error
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -51,7 +53,7 @@ export const Register: React.FC = () => {
     setError(null);
 
     try {
-      // 1. Registrar Tenant y Propietario
+      // Registrar Tenant y Propietario. La cuenta queda pendiente hasta confirmar el correo.
       await api.post(`/auth/register`, {
         firstName,
         lastName,
@@ -61,17 +63,7 @@ export const Register: React.FC = () => {
         slug
       });
 
-      // 2. Hacer login automático inmediatamente tras registrar
-      const loginRes = await api.post(`/auth/login`, {
-        email,
-        password
-      });
-
-      const { token, user, tenant } = loginRes.data;
-      loginStore(token, user, tenant);
-
-      // Redirigir al dashboard del nuevo tenant
-      navigate(`/${tenant.slug}/dashboard`);
+      setRegisteredEmail(email);
 
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -81,9 +73,79 @@ export const Register: React.FC = () => {
     }
   };
 
+  // Registro con Google: como Google no provee empresa/slug, se exige llenarlos antes de continuar
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) return;
+
+    if (!companyName || !slug) {
+      setError('Completa el nombre de la empresa y el slug del workspace antes de continuar con Google.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await api.post('/auth/google', {
+        idToken: credentialResponse.credential,
+        companyName,
+        slug
+      });
+
+      const { token, user, tenant } = res.data;
+      loginStore(token, user, tenant);
+      navigate(`/${tenant.slug}/dashboard`);
+    } catch (err: any) {
+      console.error('Google registration error:', err);
+      setError(err.response?.data?.error || 'Error al registrar la cuenta con Google.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!registeredEmail) return;
+    setLoading(true);
+    try {
+      await api.post('/auth/resend-verification', { email: registeredEmail });
+    } catch (err) {
+      console.error('Error al reenviar verificación:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pantalla de confirmación tras un registro clásico exitoso: la cuenta queda pendiente de verificar el correo
+  if (registeredEmail) {
+    return (
+      <div className="space-y-6 text-center">
+        <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
+          <p className="text-sm font-semibold text-slate-800">¡Ya casi! Confirma tu correo</p>
+          <p className="text-xs text-slate-600 mt-2">
+            Enviamos un enlace de confirmación a <span className="font-semibold">{registeredEmail}</span>.
+            Ábrelo para activar tu cuenta e iniciar sesión.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleResendVerification}
+          disabled={loading}
+          className="text-xs text-purple-600 hover:text-purple-500 font-bold transition-colors disabled:opacity-50"
+        >
+          {loading ? 'Enviando...' : '¿No te llegó? Reenviar correo'}
+        </button>
+        <div className="text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
+          <Link to="/login" className="text-purple-600 hover:text-purple-500 font-bold transition-colors">
+            Volver a inicio de sesión
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      
+
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
           {error}
@@ -228,6 +290,27 @@ export const Register: React.FC = () => {
           {loading ? 'Creando cuenta...' : 'Registrarse'}
         </button>
       </form>
+
+      {/* SEPARADOR Y REGISTRO CON GOOGLE */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[11px] text-slate-400 uppercase tracking-wide">o</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+        <p className="text-center text-[11px] text-slate-400">
+          Completa "Nombre Empresa" y "Slug" arriba para registrarte con Google
+        </p>
+        <div className="flex justify-center">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('No pudimos registrar la cuenta con Google.')}
+            text="signup_with"
+            shape="pill"
+            width="320"
+          />
+        </div>
+      </div>
 
       {/* Enlace de Regreso */}
       <div className="text-center text-xs text-slate-400 border-t border-slate-100 pt-4">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
+import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -16,6 +17,8 @@ export const Login: React.FC = () => {
   // Estados de carga y error
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showResend, setShowResend] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
 
@@ -23,9 +26,10 @@ export const Login: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
-    setLoading(false);
     setLoading(true);
     setError(null);
+    setShowResend(false);
+    setResendSent(false);
 
     try {
       const res = await api.post(`/auth/login`, {
@@ -34,15 +38,58 @@ export const Login: React.FC = () => {
       });
 
       const { token, user, tenant } = res.data;
-      
+
       // Guardar en store
       loginStore(token, user, tenant);
+
+      // El ADMIN de plataforma no pertenece a ningún tenant: va a su propio panel.
+      if (!tenant) {
+        navigate('/admin/dashboard');
+        return;
+      }
 
       // Redirigir al dashboard del tenant
       navigate(`/${tenant.slug}/dashboard`);
     } catch (err: any) {
       console.error('Error logging in:', err);
       setError(err.response?.data?.error || 'Credenciales inválidas o correo no registrado.');
+      if (err.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
+        setShowResend(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setLoading(true);
+    try {
+      await api.post('/auth/resend-verification', { email });
+      setResendSent(true);
+    } catch (err) {
+      console.error('Error al reenviar verificación:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Login con Google: se envía el idToken al backend, que busca la cuenta existente
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await api.post('/auth/google', {
+        idToken: credentialResponse.credential
+      });
+
+      const { token, user, tenant } = res.data;
+      loginStore(token, user, tenant);
+      navigate(`/${tenant.slug}/dashboard`);
+    } catch (err: any) {
+      console.error('Error logging in with Google:', err);
+      setError(err.response?.data?.error || 'No pudimos iniciar sesión con Google. ¿Ya tienes una cuenta creada?');
     } finally {
       setLoading(false);
     }
@@ -52,8 +99,22 @@ export const Login: React.FC = () => {
     <div className="space-y-6">
       
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
-          {error}
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 space-y-2">
+          <p>{error}</p>
+          {showResend && (
+            resendSent ? (
+              <p className="text-slate-500">Te enviamos un nuevo enlace de confirmación.</p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={loading}
+                className="font-bold text-red-700 hover:text-red-800 transition-colors disabled:opacity-50"
+              >
+                Reenviar correo de confirmación
+              </button>
+            )
+          )}
         </div>
       )}
 
@@ -120,6 +181,24 @@ export const Login: React.FC = () => {
           {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
         </button>
       </form>
+
+      {/* SEPARADOR Y LOGIN CON GOOGLE */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[11px] text-slate-400 uppercase tracking-wide">o</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+        <div className="flex justify-center">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('No pudimos iniciar sesión con Google.')}
+            text="signin_with"
+            shape="pill"
+            width="320"
+          />
+        </div>
+      </div>
 
       {/* Enlace de Registro */}
       <div className="text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
