@@ -98,3 +98,19 @@ export const sendCredentialsEmail = async (
     `
   });
 };
+
+export const sendPasswordChangedEmail = async (to: string, name: string): Promise<void> => {
+  await send({
+    to,
+    toName: name,
+    subject: 'Tu contraseña de Roomly fue actualizada',
+    fallbackLogMessage: `Mailjet no configurado. Aviso de cambio de contraseña para ${to}.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e293b;">Hola ${name},</h2>
+        <p style="color: #475569;">Te confirmamos que la contraseña de tu cuenta en Roomly fue actualizada correctamente.</p>
+        <p style="color: #94a3b8; font-size: 12px;">Si no fuiste tú quien hizo este cambio, contacta de inmediato a tu propietario o administrador para asegurar tu cuenta.</p>
+      </div>
+    `
+  });
+};

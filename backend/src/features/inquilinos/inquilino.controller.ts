@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma, { runInTransaction } from '../../core/db/prisma';
-import { sendCredentialsEmail } from '../../core/services/email.service';
+import { sendCredentialsEmail, sendPasswordChangedEmail } from '../../core/services/email.service';
 import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
 export const getAllInquilinos = async (req: Request, res: Response): Promise<void> => {
@@ -781,19 +781,47 @@ export const getInquilinoHistorial = async (req: Request, res: Response): Promis
 
 export const changeInquilinoPassword = async (req: Request, res: Response): Promise<void> => {
   const userId = req.userId!;
-  const { password } = req.body;
+  const { currentPassword, password } = req.body;
 
   if (!password || password.length < 6) {
     res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
     return;
   }
 
+  if (!currentPassword) {
+    res.status(400).json({ error: 'Debes ingresar tu contraseña actual.' });
+    return;
+  }
+
   try {
+    const user = await prisma.usuario.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.status(404).json({ error: 'Usuario no encontrado.' });
+      return;
+    }
+
+    if (!user.password) {
+      res.status(400).json({ error: 'Esta cuenta inicia sesión con Google y no tiene contraseña que cambiar.' });
+      return;
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      res.status(401).json({ error: 'La contraseña actual es incorrecta.' });
+      return;
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.usuario.update({
       where: { id: userId },
       data: { password: hashedPassword }
     });
+
+    try {
+      await sendPasswordChangedEmail(user.email, user.firstName);
+    } catch (emailError) {
+      console.error('Error enviando aviso de cambio de contraseña:', emailError);
+    }
 
     res.json({ message: 'Contraseña actualizada con éxito.' });
   } catch (error) {

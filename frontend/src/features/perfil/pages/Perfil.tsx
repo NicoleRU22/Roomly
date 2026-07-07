@@ -10,6 +10,7 @@ export const Perfil: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Estados para cambio de contraseña
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passLoading, setPassLoading] = useState(false);
@@ -56,16 +57,11 @@ export const Perfil: React.FC = () => {
 
     setPassLoading(true);
     try {
-      if (user?.role === 'INQUILINO') {
-        // Endpoint del inquilino
-        await api.put('/inquilinos/change-password', { password: newPassword });
-      } else {
-        // En el caso del propietario, podemos usar un endpoint general o reutilizar el mismo.
-        // Dado que en el back changeInquilinoPassword busca por el req.userId de la sesión sin importar el rol:
-        // podemos llamarlo igual!
-        await api.put('/inquilinos/change-password', { password: newPassword });
-      }
-      setPassSuccess('¡Contraseña actualizada con éxito!');
+      // El mismo endpoint sirve para cualquier rol: changeInquilinoPassword actualiza
+      // la contraseña del usuario autenticado (req.userId), sin importar si es inquilino o propietario.
+      await api.put('/inquilinos/change-password', { currentPassword, password: newPassword });
+      setPassSuccess('¡Contraseña actualizada con éxito! Te enviamos un correo de confirmación.');
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
@@ -161,6 +157,18 @@ export const Perfil: React.FC = () => {
                 {passSuccess}
               </div>
             )}
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Contraseña Actual</label>
+              <input
+                type="password"
+                required
+                placeholder="Tu contraseña actual"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+              />
+            </div>
 
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nueva Contraseña</label>
