@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma, { runInTransaction } from '../../core/db/prisma';
-import { sendSimulatedCredentialsEmail } from '../../core/utils/email';
+import { sendCredentialsEmail } from '../../core/services/email.service';
 import { getPaginationParams, buildPaginatedResponse } from '../../core/utils/pagination';
 
 export const getAllInquilinos = async (req: Request, res: Response): Promise<void> => {
@@ -237,7 +237,10 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
             password: hashedPassword,
             firstName: name,
             role: 'INQUILINO',
-            tenantId
+            tenantId,
+            // El propietario ya garantiza esta cuenta al crearla y entregarle la contraseña directamente,
+            // así que no se le exige el flujo de verificación por correo de las cuentas autorregistradas.
+            emailVerified: true
           }
         });
       }
@@ -271,9 +274,14 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
       return inquilino;
     });
 
-    // Enviar correo simulado de credenciales
+    // Enviar las credenciales de acceso al correo real del inquilino.
+    // Si el envío falla, no se revierte la creación (ya quedó registrado y recibió el mensaje interno).
     const tenantRecord = await prisma.tenant.findUnique({ where: { id: tenantId } });
-    sendSimulatedCredentialsEmail(normalizedEmail, name, plainPass, tenantRecord?.slug || '');
+    try {
+      await sendCredentialsEmail(normalizedEmail, name, plainPass, tenantRecord?.slug || '');
+    } catch (emailError) {
+      console.error('Error enviando correo de credenciales al inquilino:', emailError);
+    }
 
     res.status(201).json({
       id: result.id,

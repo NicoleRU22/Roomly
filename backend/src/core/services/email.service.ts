@@ -16,12 +16,18 @@ const getMailjetClient = (): Mailjet => {
   return mailjet;
 };
 
-export const sendVerificationEmail = async (to: string, firstName: string, token: string): Promise<void> => {
-  const verifyUrl = `${FRONTEND_URL}/verify-email?token=${token}`;
+interface SendParams {
+  to: string;
+  toName: string;
+  subject: string;
+  html: string;
+  fallbackLogMessage: string;
+}
 
+const send = async ({ to, toName, subject, html, fallbackLogMessage }: SendParams): Promise<void> => {
   if (!MAILJET_API_KEY || !MAILJET_SECRET_KEY) {
-    // Sin credenciales (típico en desarrollo local) se imprime el enlace para poder probar el flujo igualmente.
-    console.warn(`Mailjet no configurado. Enlace de verificación para ${to}: ${verifyUrl}`);
+    // Sin credenciales (típico en desarrollo local) se imprime el mensaje para poder probar el flujo igualmente.
+    console.warn(fallbackLogMessage);
     return;
   }
 
@@ -29,18 +35,9 @@ export const sendVerificationEmail = async (to: string, firstName: string, token
     Messages: [
       {
         From: { Email: EMAIL_FROM, Name: EMAIL_FROM_NAME },
-        To: [{ Email: to, Name: firstName }],
-        Subject: 'Confirma tu correo en Roomly',
-        HTMLPart: `
-          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-            <h2 style="color: #1e293b;">¡Hola ${firstName}!</h2>
-            <p style="color: #475569;">Gracias por registrarte en Roomly. Confirma tu correo electrónico para activar tu cuenta:</p>
-            <a href="${verifyUrl}" style="display: inline-block; padding: 12px 24px; background-color: #1e293b; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; margin: 16px 0;">
-              Confirmar mi correo
-            </a>
-            <p style="color: #94a3b8; font-size: 12px;">Si no creaste esta cuenta, puedes ignorar este mensaje. Este enlace expira en 24 horas.</p>
-          </div>
-        `
+        To: [{ Email: to, Name: toName }],
+        Subject: subject,
+        HTMLPart: html
       }
     ]
   });
@@ -49,4 +46,55 @@ export const sendVerificationEmail = async (to: string, firstName: string, token
   if (status !== 'success') {
     throw new Error(`Mailjet rechazó el envío: ${JSON.stringify(result.body)}`);
   }
+};
+
+export const sendVerificationEmail = async (to: string, firstName: string, token: string): Promise<void> => {
+  const verifyUrl = `${FRONTEND_URL}/verify-email?token=${token}`;
+
+  await send({
+    to,
+    toName: firstName,
+    subject: 'Confirma tu correo en Roomly',
+    fallbackLogMessage: `Mailjet no configurado. Enlace de verificación para ${to}: ${verifyUrl}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e293b;">¡Hola ${firstName}!</h2>
+        <p style="color: #475569;">Gracias por registrarte en Roomly. Confirma tu correo electrónico para activar tu cuenta:</p>
+        <a href="${verifyUrl}" style="display: inline-block; padding: 12px 24px; background-color: #1e293b; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; margin: 16px 0;">
+          Confirmar mi correo
+        </a>
+        <p style="color: #94a3b8; font-size: 12px;">Si no creaste esta cuenta, puedes ignorar este mensaje. Este enlace expira en 24 horas.</p>
+      </div>
+    `
+  });
+};
+
+export const sendCredentialsEmail = async (
+  to: string,
+  name: string,
+  passwordPlain: string,
+  tenantSlug: string
+): Promise<void> => {
+  const loginUrl = `${FRONTEND_URL}/login`;
+
+  await send({
+    to,
+    toName: name,
+    subject: 'Tus credenciales de acceso a Roomly',
+    fallbackLogMessage: `Mailjet no configurado. Credenciales para ${to}: usuario=${to} contraseña=${passwordPlain} workspace=${tenantSlug}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e293b;">¡Bienvenido(a) a Roomly, ${name}!</h2>
+        <p style="color: #475569;">Tu propietario te dio de alta en la plataforma. Estas son tus credenciales de acceso:</p>
+        <p style="color: #1e293b; background: #f1f5f9; padding: 12px 16px; border-radius: 12px;">
+          <strong>Usuario:</strong> ${to}<br/>
+          <strong>Contraseña temporal:</strong> ${passwordPlain}
+        </p>
+        <a href="${loginUrl}" style="display: inline-block; padding: 12px 24px; background-color: #1e293b; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; margin: 16px 0;">
+          Iniciar sesión
+        </a>
+        <p style="color: #94a3b8; font-size: 12px;">Te recomendamos cambiar esta contraseña desde tu perfil después de iniciar sesión.</p>
+      </div>
+    `
+  });
 };
