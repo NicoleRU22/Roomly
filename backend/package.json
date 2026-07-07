@@ -24,9 +24,9 @@
     "google-auth-library": "^10.9.0",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
+    "node-mailjet": "^6.0.11",
     "pg": "^8.21.0",
-    "prisma": "^7.8.0",
-    "resend": "^6.17.1"
+    "prisma": "^7.8.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
