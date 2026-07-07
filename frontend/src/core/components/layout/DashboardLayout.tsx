@@ -19,7 +19,8 @@ import {
   Settings,
   Wrench,
   Layers,
-  MessageCircle
+  MessageCircle,
+  User
 } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
@@ -291,6 +292,13 @@ export const DashboardLayout: React.FC = () => {
                 </>
               )}
             </div>
+            <button
+              onClick={() => navigate(`/${tenant?.slug}/perfil`)}
+              className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100"
+              title="Mi Perfil"
+            >
+              <User className="w-5 h-5" />
+            </button>
             {user?.role !== 'INQUILINO' && (
               <button
                 onClick={() => navigate(`/${tenant?.slug}/configuracion`)}
