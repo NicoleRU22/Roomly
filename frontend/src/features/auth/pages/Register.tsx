@@ -73,14 +73,10 @@ export const Register: React.FC = () => {
     }
   };
 
-  // Registro con Google: como Google no provee empresa/slug, se exige llenarlos antes de continuar
+  // Registro/login con Google: el backend inicia sesión si el correo ya existe,
+  // y solo exige empresa/slug cuando la cuenta es nueva.
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
     if (!credentialResponse.credential) return;
-
-    if (!companyName || !slug) {
-      setError('Completa el nombre de la empresa y el slug del workspace antes de continuar con Google.');
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -299,7 +295,7 @@ export const Register: React.FC = () => {
           <div className="h-px flex-1 bg-slate-200" />
         </div>
         <p className="text-center text-[11px] text-slate-400">
-          Completa "Nombre Empresa" y "Slug" arriba para registrarte con Google
+          Si ya tienes cuenta, entrarás directo. Para crear una nueva, completa "Nombre Empresa" y "Slug" arriba.
         </p>
         <div className="flex justify-center">
           <GoogleLogin
