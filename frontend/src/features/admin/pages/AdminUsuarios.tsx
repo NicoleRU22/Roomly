@@ -32,6 +32,7 @@ export const AdminUsuarios: React.FC = () => {
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<UsuarioRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchUsuarios = async () => {
     setLoading(true);
@@ -53,12 +54,13 @@ export const AdminUsuarios: React.FC = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await api.delete(`/admin/usuarios/${deleteTarget.id}`);
       setUsuarios((prev) => prev.filter((u) => u.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'No se pudo eliminar el usuario.');
+      setDeleteError(err.response?.data?.error || 'No se pudo eliminar el usuario.');
     } finally {
       setDeleting(false);
     }
@@ -172,11 +174,17 @@ export const AdminUsuarios: React.FC = () => {
       <ConfirmModal
         isOpen={!!deleteTarget}
         title="Eliminar cuenta de acceso"
-        message={`¿Seguro que quieres eliminar la cuenta de acceso de ${deleteTarget?.firstName || ''}${deleteTarget?.lastName ? ' ' + deleteTarget.lastName : ''} (${deleteTarget?.email})? Esta acción no se puede deshacer. Útil para volver a probar el envío de credenciales por correo.`}
+        message={
+          `¿Seguro que quieres eliminar la cuenta de acceso de ${deleteTarget?.firstName || ''}${deleteTarget?.lastName ? ' ' + deleteTarget.lastName : ''} (${deleteTarget?.email})? Esta acción no se puede deshacer. Útil para volver a probar el envío de credenciales por correo.` +
+          (deleteError ? `\n\n⚠ ${deleteError}` : '')
+        }
         confirmText={deleting ? 'Eliminando...' : 'Eliminar'}
         isDestructive
         onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
       />
     </div>
   );
