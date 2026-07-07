@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
 
+const MAX_CONTENT_LENGTH = 2000;
+const MIN_SEND_INTERVAL_MS = 1000;
+const lastSentAtByUser = new Map<number, number>();
+
 // Devuelve la lista de conversaciones del usuario logueado.
 // Un PROPIETARIO ve una conversación por cada inquilino de su tenant.
 // Un INQUILINO ve una única conversación con el/los propietario(s) de su tenant.
@@ -129,6 +133,20 @@ export const sendMensaje = async (req: Request, res: Response): Promise<void> =>
     res.status(400).json({ error: 'El mensaje no puede estar vacío.' });
     return;
   }
+
+  if (content.trim().length > MAX_CONTENT_LENGTH) {
+    res.status(400).json({ error: `El mensaje no puede superar los ${MAX_CONTENT_LENGTH} caracteres.` });
+    return;
+  }
+
+  const now = Date.now();
+  const lastSentAt = lastSentAtByUser.get(userId);
+  if (lastSentAt && now - lastSentAt < MIN_SEND_INTERVAL_MS) {
+    res.status(429).json({ error: 'Estás enviando mensajes demasiado rápido. Espera un momento.' });
+    return;
+  }
+
+  lastSentAtByUser.set(userId, now);
 
   try {
     const otherUser = await prisma.usuario.findFirst({ where: { id: otherUserId, tenantId } });
