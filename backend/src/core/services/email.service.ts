@@ -99,6 +99,27 @@ export const sendCredentialsEmail = async (
   });
 };
 
+export const sendPasswordResetEmail = async (to: string, name: string, token: string): Promise<void> => {
+  const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}`;
+
+  await send({
+    to,
+    toName: name,
+    subject: 'Restablece tu contraseña de Roomly',
+    fallbackLogMessage: `Mailjet no configurado. Enlace de restablecimiento para ${to}: ${resetUrl}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e293b;">Hola ${name},</h2>
+        <p style="color: #475569;">Recibimos una solicitud para restablecer la contraseña de tu cuenta en Roomly. Haz clic en el botón para elegir una nueva:</p>
+        <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background-color: #1e293b; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; margin: 16px 0;">
+          Restablecer contraseña
+        </a>
+        <p style="color: #94a3b8; font-size: 12px;">Si no solicitaste este cambio, puedes ignorar este mensaje y tu contraseña seguirá siendo la misma. Este enlace expira en 1 hora.</p>
+      </div>
+    `
+  });
+};
+
 export const sendPasswordChangedEmail = async (to: string, name: string): Promise<void> => {
   await send({
     to,

@@ -52,6 +52,8 @@ model Usuario {
   emailVerified Boolean         @default(false)
   verificationToken       String?   @unique
   verificationTokenExpiry DateTime?
+  resetToken              String?   @unique
+  resetTokenExpiry        DateTime?
   firstName     String
   lastName      String?
   role          String          // "PROPIETARIO", "INQUILINO" o "ADMIN"

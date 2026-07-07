@@ -4,12 +4,13 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import prisma from '../../core/db/prisma';
-import { sendVerificationEmail } from '../../core/services/email.service';
+import { sendVerificationEmail, sendPasswordResetEmail, sendPasswordChangedEmail } from '../../core/services/email.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'roomly-super-secret-key';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
 
 const signToken = (user: { id: number; email: string; role: string; tenantId: number | null }, tenantSlug: string | null) =>
   jwt.sign(
@@ -410,5 +411,96 @@ export const resendVerification = async (req: Request, res: Response): Promise<v
   } catch (error) {
     console.error('Error en resendVerification:', error);
     res.status(500).json({ error: 'Error al reenviar el correo de verificación.' });
+  }
+};
+
+// Solicita el restablecimiento de contraseña. Responde igual exista o no la cuenta,
+// para no filtrar qué correos están registrados.
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  const { email } = req.body;
+  const genericResponse = { message: 'Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña.' };
+
+  if (!email) {
+    res.status(400).json({ error: 'El correo es requerido.' });
+    return;
+  }
+
+  try {
+    const user = await prisma.usuario.findUnique({ where: { email: String(email).trim().toLowerCase() } });
+
+    // Las cuentas solo-Google no tienen contraseña que restablecer
+    if (!user || !user.password) {
+      res.json(genericResponse);
+      return;
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+    await prisma.usuario.update({
+      where: { id: user.id },
+      data: { resetToken, resetTokenExpiry }
+    });
+
+    try {
+      await sendPasswordResetEmail(user.email, user.firstName, resetToken);
+    } catch (emailError) {
+      console.error('Error enviando correo de restablecimiento:', emailError);
+    }
+
+    res.json(genericResponse);
+
+  } catch (error) {
+    console.error('Error en forgotPassword:', error);
+    res.status(500).json({ error: 'Error al solicitar el restablecimiento de contraseña.' });
+  }
+};
+
+// Aplica la nueva contraseña a partir del token recibido por correo.
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  const { token, password } = req.body;
+
+  if (!token || typeof token !== 'string') {
+    res.status(400).json({ error: 'El token de restablecimiento es requerido.' });
+    return;
+  }
+
+  if (!password || password.length < 6) {
+    res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
+    return;
+  }
+
+  try {
+    const user = await prisma.usuario.findUnique({ where: { resetToken: token } });
+
+    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+      res.status(400).json({ error: 'El enlace de restablecimiento es inválido o ha expirado. Solicita uno nuevo.' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await prisma.usuario.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpiry: null,
+        // Restablecer por correo demuestra la propiedad del email, así que
+        // también desbloquea cuentas que quedaron pendientes de verificación.
+        emailVerified: true
+      }
+    });
+
+    try {
+      await sendPasswordChangedEmail(user.email, user.firstName);
+    } catch (emailError) {
+      console.error('Error enviando aviso de cambio de contraseña:', emailError);
+    }
+
+    res.json({ message: 'Contraseña restablecida con éxito. Ya puedes iniciar sesión.' });
+
+  } catch (error) {
+    console.error('Error en resetPassword:', error);
+    res.status(500).json({ error: 'Error al restablecer la contraseña.' });
   }
 };

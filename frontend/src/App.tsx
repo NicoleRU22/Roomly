@@ -12,6 +12,8 @@ import { Home } from './features/home/pages/Home';
 import { Login } from './features/auth/pages/Login';
 import { Register } from './features/auth/pages/Register';
 import { VerifyEmail } from './features/auth/pages/VerifyEmail';
+import { ForgotPassword } from './features/auth/pages/ForgotPassword';
+import { ResetPassword } from './features/auth/pages/ResetPassword';
 import { Dashboard } from './features/dashboard/pages/Dashboard';
 import { Propiedades } from './features/propiedades/pages/Propiedades';
 import { Rooms } from './features/propiedades/pages/Rooms';
@@ -65,6 +67,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Route>
 
         {/* Panel de administración de plataforma (rol ADMIN) */}

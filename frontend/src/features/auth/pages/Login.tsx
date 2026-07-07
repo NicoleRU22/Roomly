@@ -158,18 +158,23 @@ export const Login: React.FC = () => {
           </div>
         </div>
 
-        {/* CHECKBOX RECORDAR CONTRASEÑA */}
-        <div className="flex items-center">
-          <input
-            id="remember-me"
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)}
-            className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500"
-          />
-          <label htmlFor="remember-me" className="ml-2 block text-xs font-medium text-slate-700 select-none">
-            Recordar contraseña
-          </label>
+        {/* CHECKBOX RECORDAR CONTRASEÑA Y ENLACE DE RECUPERACIÓN */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <input
+              id="remember-me"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="remember-me" className="ml-2 block text-xs font-medium text-slate-700 select-none">
+              Recordar contraseña
+            </label>
+          </div>
+          <Link to="/forgot-password" className="text-xs text-purple-600 hover:text-purple-500 font-bold transition-colors">
+            ¿Olvidaste tu contraseña?
+          </Link>
         </div>
 
         {/* BOTÓN INICIAR SESIÓN */}
