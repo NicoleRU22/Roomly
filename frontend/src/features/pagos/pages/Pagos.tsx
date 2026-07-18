@@ -1,10 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, AlertCircle, CheckCircle, XCircle, Search, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, FileText, Check, Clock, DollarSign, Download, Upload, Eye, Printer, AlertTriangle, AlertCircle, CheckCircle, XCircle, Search, RefreshCw, CreditCard, Loader2, X } from 'lucide-react';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { Pagination } from '../../../core/components/ui/Pagination';
 import ExcelJS from 'exceljs';
+
+declare global {
+  interface Window {
+    CulqiCheckout: any;
+  }
+}
 
 interface Payment {
   id: number;
@@ -151,6 +157,17 @@ export const Pagos: React.FC = () => {
   const [tenantPaymentsPage, setTenantPaymentsPage] = useState(1);
   const [ownerPaymentsPage, setOwnerPaymentsPage] = useState(1);
   const [debtsPage, setDebtsPage] = useState(1);
+  const [loadingPaymentId, setLoadingPaymentId] = useState<number | null>(null);
+  const [paymentAlert, setPaymentAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (paymentAlert) {
+      const timer = setTimeout(() => {
+        setPaymentAlert(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [paymentAlert]);
 
   // Estados de Filtro/Búsqueda de Pagos (Propietario)
   const [searchTerm, setSearchTerm] = useState('');
@@ -184,6 +201,133 @@ export const Pagos: React.FC = () => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
     return `${getApiUrl()}${path}`;
+  };
+
+  const loadCulqiScript = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (window.CulqiCheckout) {
+        resolve();
+        return;
+      }
+      const existingScript = document.getElementById('culqi-sdk');
+      if (existingScript) {
+        const handleLoad = () => resolve();
+        existingScript.addEventListener('load', handleLoad);
+        existingScript.addEventListener('error', () => reject(new Error('Error al cargar Culqi')));
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = 'culqi-sdk';
+      script.src = 'https://js.culqi.com/checkout-js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('No se pudo cargar el SDK de Culqi'));
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleCulqiPayment = async (pay: Payment) => {
+    setLoadingPaymentId(pay.id);
+    setError(null);
+    try {
+      await loadCulqiScript();
+
+      const configRes = await api.get('/payments/culqi/config');
+      const { configured, publicKey } = configRes.data;
+
+      if (!configured || !publicKey) {
+        throw new Error('Culqi no está configurado en el servidor.');
+      }
+
+      const totalAmount = (pay.amount - pay.amountPaid) + pay.delayPenalty;
+
+      const culqiConfig = {
+        settings: {
+          title: 'Roomly pagos',
+          currency: 'PEN',
+          amount: Math.round(totalAmount * 100),
+        },
+        client: {
+          email: pay.inquilinoEmail || user?.email || '',
+        },
+        options: {
+          lang: 'es',
+          installments: false,
+          modal: true,
+          paymentMethods: {
+            tarjeta: true,
+            yape: true,
+            billetera: false,
+            bancaMovil: false,
+            agente: false,
+            cuotealo: false
+          }
+        },
+        appearance: {
+          theme: 'default',
+          hiddenCulqiLogo: false,
+          hiddenBannerContent: false,
+          hiddenBanner: false,
+          hiddenToolBarAmount: false,
+          menuType: 'sidebar',
+          buttonCardPayText: 'Pagar',
+          defaultStyle: {
+            bannerColor: '#A855F7',
+            buttonBackground: '#A855F7',
+            menuColor: '#ffffff',
+            linksColor: '#A855F7',
+            buttonTextColor: '#ffffff',
+            priceColor: '#A855F7'
+          }
+        }
+      };
+
+      const culqi = new window.CulqiCheckout(publicKey, culqiConfig);
+
+      culqi.culqi = async () => {
+        if (culqi.token) {
+          const tokenId = culqi.token.id;
+          culqi.close();
+          await processOnlinePayment(pay.id, tokenId);
+        } else if (culqi.order) {
+          culqi.close();
+        } else {
+          culqi.close();
+          const err = culqi.error;
+          setPaymentAlert({ type: 'error', message: err?.user_message || err?.merchant_message || 'Error al procesar el pago.' });
+        }
+      };
+
+      culqi.open();
+    } catch (err: any) {
+      console.error(err);
+      setPaymentAlert({ type: 'error', message: err.message || 'Error al iniciar el pago.' });
+    } finally {
+      setLoadingPaymentId(null);
+    }
+  };
+
+  const processOnlinePayment = async (paymentId: number, tokenId: string) => {
+    setLoadingPaymentId(paymentId);
+    setError(null);
+    try {
+      const response = await api.post(`/payments/${paymentId}/culqi-charge`, {
+        token_id: tokenId
+      });
+
+      if (response.data.success) {
+        setPaymentAlert({ type: 'success', message: '¡Pago procesado con éxito!' });
+        fetchPaymentsAndInquilinos();
+      } else {
+        setPaymentAlert({ type: 'error', message: response.data.error || 'Error al procesar el pago.' });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setPaymentAlert({ type: 'error', message: err.response?.data?.error || 'Error de conexión con el servidor.' });
+    } finally {
+      setLoadingPaymentId(null);
+    }
   };
 
   const fetchPaymentsAndInquilinos = async () => {
@@ -1254,13 +1398,27 @@ export const Pagos: React.FC = () => {
                         <td className="px-6 py-4">
                           <div className="flex items-center space-x-2">
                             {pay.status !== 'PAGADO' && pay.receiptStatus !== 'PENDIENTE' && (
-                              <button
-                                onClick={() => openTenantUploadModal(pay)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#A855F7] hover:bg-purple-650 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                              >
-                                <Upload className="w-3.5 h-3.5" />
-                                Subir Comprobante
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleCulqiPayment(pay)}
+                                  disabled={loadingPaymentId !== null}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#A855F7] hover:bg-purple-650 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                                >
+                                  {loadingPaymentId === pay.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                  )}
+                                  Pagar
+                                </button>
+                                <button
+                                  onClick={() => openTenantUploadModal(pay)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:border-purple-650 text-slate-700 hover:text-purple-650 rounded-xl text-xs font-bold transition-all shadow-sm"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                  Subir Comprobante
+                                </button>
+                              </>
                             )}
 
                             {pay.receiptImageUrl && (
@@ -1408,6 +1566,32 @@ export const Pagos: React.FC = () => {
                 className="max-h-[80vh] w-auto object-contain rounded-lg shadow-inner"
               />
             </div>
+          </div>
+        )}
+
+        {paymentAlert && (
+          <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 bg-white border border-slate-200 shadow-2xl p-4 rounded-2xl max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-300">
+            <div className={`p-2 rounded-xl ${paymentAlert.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+              {paymentAlert.type === 'success' ? (
+                <Check className="w-5 h-5" />
+              ) : (
+                <AlertCircle className="w-5 h-5" />
+              )}
+            </div>
+            <div className="flex-1">
+              <h4 className="text-xs font-bold text-slate-800">
+                {paymentAlert.type === 'success' ? 'Pago Exitoso' : 'Error en Pago'}
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {paymentAlert.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setPaymentAlert(null)}
+              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
       </div>
@@ -2570,6 +2754,32 @@ export const Pagos: React.FC = () => {
         onConfirm={confirmDeletePayment}
         onCancel={() => setDeletePaymentId(null)}
       />
+
+      {paymentAlert && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 bg-white border border-slate-200 shadow-2xl p-4 rounded-2xl max-w-sm animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className={`p-2 rounded-xl ${paymentAlert.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+            {paymentAlert.type === 'success' ? (
+              <Check className="w-5 h-5" />
+            ) : (
+              <AlertCircle className="w-5 h-5" />
+            )}
+          </div>
+          <div className="flex-1">
+            <h4 className="text-xs font-bold text-slate-800">
+              {paymentAlert.type === 'success' ? 'Pago Exitoso' : 'Error en Pago'}
+            </h4>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {paymentAlert.message}
+            </p>
+          </div>
+          <button
+            onClick={() => setPaymentAlert(null)}
+            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

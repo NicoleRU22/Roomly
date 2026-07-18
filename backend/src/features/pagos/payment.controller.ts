@@ -609,3 +609,231 @@ export const deletePayment = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ error: 'Error al eliminar el pago.' });
   }
 };
+
+// --- CULQI INTEGRATION CONTROLLERS ---
+
+function mapCulqiError(result: any): string {
+  if (!result) return 'El pago no pudo ser procesado. Intente con otra tarjeta o consulte con su banco.';
+
+  if (typeof result === 'string') {
+    return formatErrorMessage(result);
+  }
+
+  const code = result.code || result.error?.code || result.outcome?.code;
+  const declineCode = result.decline_code || result.error?.decline_code || result.outcome?.decline_code;
+  const type = result.type || result.error?.type || result.outcome?.type;
+  const userMessage = result.user_message || result.error?.user_message || result.outcome?.user_message || result.merchant_message || result.error?.merchant_message || '';
+
+  console.log(`[Culqi Error Mapper] Mapping error. Code: ${code}, DeclineCode: ${declineCode}, Type: ${type}, Message: ${userMessage}`);
+
+  if (code === 'DNGA9999' || type === 'venta_denegada') {
+    return 'La transacción fue denegada por el banco. Por favor, intente con otra tarjeta o consulte con su banco.';
+  }
+  if (declineCode === 'insufficient_funds' || code === 'insufficient_funds') {
+    return 'Saldo insuficiente. Intente con otra tarjeta o consulte con su banco.';
+  }
+  if (declineCode === 'expired_card' || code === 'expired_card') {
+    return 'La tarjeta ha vencido o expirado. Intente con otra tarjeta.';
+  }
+  if (declineCode === 'incorrect_cvv' || code === 'incorrect_cvv') {
+    return 'Código de seguridad (CVV) incorrecto. Verifique los datos e intente de nuevo.';
+  }
+  if (declineCode === 'contact_bank' || code === 'contact_bank') {
+    return 'Transacción no autorizada. Por favor, comuníquese con su banco emisor.';
+  }
+  if (declineCode === 'lost_or_stolen_card' || code === 'lost_or_stolen_card') {
+    return 'Tarjeta reportada como perdida o robada. Intente con otra tarjeta.';
+  }
+  if (declineCode === 'restricted_card' || code === 'restricted_card') {
+    return 'Tarjeta bloqueada o restringida. Consulte con su banco emisor.';
+  }
+
+  return formatErrorMessage(userMessage);
+}
+
+function formatErrorMessage(message: string): string {
+  if (!message) return 'El pago no pudo ser procesado. Intente con otra tarjeta o consulte con su banco.';
+  
+  const msg = message.toLowerCase();
+  
+  if (
+    msg.includes('límite permitido por el comercio') || 
+    msg.includes('limite permitido por el comercio') ||
+    msg.includes('supera el límite') ||
+    msg.includes('supera el limite')
+  ) {
+    return 'La transacción fue declinada por seguridad. Por favor, consulte con su banco emisor o intente con otra tarjeta.';
+  }
+  if (msg.includes('fondos insuficientes') || msg.includes('saldo insuficiente')) {
+    return 'Saldo insuficiente. Intente con otra tarjeta o consulte con su banco.';
+  }
+  if (msg.includes('tarjeta vencida') || msg.includes('expirada')) {
+    return 'La tarjeta ha vencido o expirado. Intente con otra tarjeta.';
+  }
+  if (msg.includes('código de seguridad incorrecto') || msg.includes('cvv')) {
+    return 'Código de seguridad (CVV) incorrecto. Verifique los datos e intente de nuevo.';
+  }
+  if (msg.includes('tarjeta bloqueada') || msg.includes('restringida')) {
+    return 'Tarjeta bloqueada o restringida. Consulte con su banco emisor.';
+  }
+  if (msg.includes('operación denegada') || msg.includes('operacion denegada') || msg.includes('denegada')) {
+    return 'Operación denegada por el banco. Por favor, intente de nuevo con otra tarjeta o consulte con su banco.';
+  }
+  
+  return message;
+}
+
+export const getCulqiConfig = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const env = (process.env.CULQI_ENVIRONMENT || 'integration').toLowerCase().trim();
+    const publicKey = env === 'integration'
+      ? process.env.CULQI_INTEGRATION_PUBLIC_KEY
+      : process.env.CULQI_PRODUCTION_PUBLIC_KEY;
+    res.json({
+      configured: !!publicKey,
+      publicKey: publicKey || 'pk_test_z7EquLH8eSo1aZHu'
+    });
+  } catch (error) {
+    console.error('Error en getCulqiConfig:', error);
+    res.status(500).json({ error: 'Error al obtener la configuración de Culqi.' });
+  }
+};
+
+export const processCulqiCharge = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const { id } = req.params;
+  const { token_id } = req.body;
+
+  if (!token_id) {
+    res.status(400).json({ error: 'El token de pago es requerido.' });
+    return;
+  }
+
+  try {
+    const paymentId = parseInt(id as string);
+    const payment = await prisma.payment.findFirst({
+      where: { id: paymentId, tenantId },
+      include: { inquilino: true }
+    });
+
+    if (!payment) {
+      res.status(404).json({ error: 'Pago no encontrado o sin permisos.' });
+      return;
+    }
+
+    if (payment.status === 'PAGADO') {
+      res.status(400).json({ error: 'Este recibo ya ha sido cancelado.' });
+      return;
+    }
+
+    // Calcular monto total a cobrar (monto base - monto pagado + mora)
+    const amountToPay = (payment.amount - payment.amountPaid) + payment.delayPenalty;
+    if (amountToPay <= 0) {
+      res.status(400).json({ error: 'El monto a pagar debe ser mayor a cero.' });
+      return;
+    }
+
+    // Obtener llave privada de Culqi
+    const env = (process.env.CULQI_ENVIRONMENT || 'integration').toLowerCase().trim();
+    const privateKey = env === 'integration'
+      ? process.env.CULQI_INTEGRATION_PRIVATE_KEY
+      : process.env.CULQI_PRODUCTION_PRIVATE_KEY;
+
+    if (!privateKey) {
+      res.status(500).json({ error: 'La llave privada de Culqi no está configurada.' });
+      return;
+    }
+
+    // Formatear monto en centavos (entero)
+    const amountInCents = Math.round(amountToPay * 100);
+
+    const chargeData = {
+      amount: String(amountInCents),
+      currency_code: 'PEN',
+      email: payment.inquilino.email,
+      source_id: token_id,
+      description: `Pago Roomly - Recibo #${payment.id} - ${payment.inquilino.name}`,
+      capture: true,
+      antifraud_details: {
+        first_name: payment.inquilino.name.split(' ')[0] || 'Inquilino',
+        last_name: payment.inquilino.name.split(' ').slice(1).join(' ') || 'Roomly',
+        country_code: 'PE'
+      },
+      metadata: {
+        paymentId: String(payment.id),
+        tenantId: String(tenantId)
+      }
+    };
+
+    console.log(`[Culqi API] Iniciando cobro de S/. ${amountToPay.toFixed(2)}:`, JSON.stringify(chargeData, null, 2));
+
+    const culqiResponse = await fetch('https://api.culqi.com/v2/charges', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${privateKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(chargeData)
+    });
+
+    const culqiResult = (await culqiResponse.json()) as any;
+
+    if (!culqiResponse.ok) {
+      console.error('[Culqi API] Error de Culqi:', culqiResult);
+      res.status(culqiResponse.status).json({
+        success: false,
+        error: mapCulqiError(culqiResult)
+      });
+      return;
+    }
+
+    const outcome = culqiResult.outcome || {};
+    const isApproved = outcome.type === 'venta_exitosa' || outcome.code === 'AUT0000';
+
+    if (!isApproved) {
+      res.status(400).json({
+        success: false,
+        error: mapCulqiError(outcome)
+      });
+      return;
+    }
+
+    console.log('[Culqi API] Pago aprobado:', culqiResult.id);
+
+    // Actualizar estado del pago en la base de datos
+    const updatedPayment = await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        amountPaid: payment.amountPaid + amountToPay,
+        delayPenalty: 0.0, // Al pagar el total se regulariza la mora
+        status: 'PAGADO',
+        receiptStatus: 'APROBADO',
+        lastPaymentDate: new Date(),
+        receiptReference: `CULQI-${culqiResult.id}`
+      }
+    });
+
+    // Notificar a los propietarios del pago online exitoso
+    try {
+      await notifyOwners(
+        tenantId,
+        'PAGO_APROBADO',
+        'Pago online recibido',
+        `El inquilino ${payment.inquilino.name} pagó S/. ${amountToPay.toFixed(2)} online mediante Culqi para el recibo #${payment.id}.`,
+        '/pagos'
+      );
+    } catch (notifyErr) {
+      console.error('[Culqi API] Error enviando notificación:', notifyErr);
+    }
+
+    res.json({
+      success: true,
+      message: 'Pago procesado con éxito.',
+      payment: updatedPayment
+    });
+
+  } catch (error: any) {
+    console.error('Error al procesar cargo Culqi:', error);
+    res.status(500).json({ error: `Error interno al procesar el pago: ${error.message}` });
+  }
+};
