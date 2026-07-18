@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../../core/db/prisma';
+import { saveBase64Image } from '../../core/utils/upload';
 
 export const getConfiguracion = async (req: Request, res: Response): Promise<void> => {
   const tenantId = req.tenantId!;
@@ -20,6 +21,7 @@ export const getConfiguracion = async (req: Request, res: Response): Promise<voi
       companyName: tenant.companyName,
       landlordRuc: tenant.landlordRuc || '',
       landlordAddress: tenant.landlordAddress || '',
+      landlordSignatureUrl: tenant.landlordSignatureUrl || '',
       lateFeePerDay: tenant.lateFeePerDay,
       graceDays: tenant.graceDays,
       contractExpirationWarningDays: tenant.contractExpirationWarningDays,
@@ -127,6 +129,7 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
       companyName: updated.companyName,
       landlordRuc: updated.landlordRuc || '',
       landlordAddress: updated.landlordAddress || '',
+      landlordSignatureUrl: updated.landlordSignatureUrl || '',
       lateFeePerDay: updated.lateFeePerDay,
       graceDays: updated.graceDays,
       contractExpirationWarningDays: updated.contractExpirationWarningDays,
@@ -142,5 +145,36 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
   } catch (error) {
     console.error('Error en updateConfiguracion:', error);
     res.status(500).json({ error: 'Error al actualizar la configuración.' });
+  }
+};
+
+// Sube/reemplaza la firma del propietario, reutilizada automáticamente en todos los contratos nuevos.
+export const uploadLandlordSignature = async (req: Request, res: Response): Promise<void> => {
+  const tenantId = req.tenantId!;
+  const userRole = req.userRole;
+  const { signatureImage } = req.body;
+
+  if (userRole === 'INQUILINO') {
+    res.status(403).json({ error: 'Acceso denegado. No tienes permisos para editar la configuración del negocio.' });
+    return;
+  }
+
+  if (!signatureImage) {
+    res.status(400).json({ error: 'La imagen de la firma es requerida.' });
+    return;
+  }
+
+  try {
+    const landlordSignatureUrl = await saveBase64Image(signatureImage, 'landlord-signatures');
+
+    const updated = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { landlordSignatureUrl }
+    });
+
+    res.json({ landlordSignatureUrl: updated.landlordSignatureUrl });
+  } catch (error) {
+    console.error('Error en uploadLandlordSignature:', error);
+    res.status(500).json({ error: 'Error al guardar la firma del propietario.' });
   }
 };

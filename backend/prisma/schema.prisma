@@ -15,6 +15,7 @@ model Tenant {
   // Configuración del negocio
   landlordRuc     String?
   landlordAddress String?
+  landlordSignatureUrl String? // Firma del propietario, reutilizada en todos los contratos nuevos
 
   // Reglas de cobro
   lateFeePerDay                  Float  @default(5.0)
@@ -234,6 +235,7 @@ model Contrato {
   landlordName  String?
   landlordRuc   String?
   landlordAddress String?
+  landlordSignatureUrl String? // Snapshot de la firma del propietario al momento de crear el contrato
   specialTerms  String?
   signatureUrl  String?   // URL/Base64/Ruta de la imagen de firma manuscrita
   acceptedTerms Boolean   @default(false)

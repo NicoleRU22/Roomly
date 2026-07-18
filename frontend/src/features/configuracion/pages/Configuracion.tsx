@@ -1,12 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
-import { Building2, User, Percent, MessageCircle, Bell, Save } from 'lucide-react';
+import { Building2, User, Percent, MessageCircle, Bell, Save, PenTool } from 'lucide-react';
 import { useAuthStore } from '../../auth/store/useAuthStore';
+import { SignaturePad } from '../../../core/components/ui/SignaturePad';
+
+const getImageUrl = (path?: string) => {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  return `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${path}`;
+};
 
 interface ConfiguracionData {
   companyName: string;
   landlordRuc: string;
   landlordAddress: string;
+  landlordSignatureUrl: string;
   lateFeePerDay: number;
   graceDays: number;
   contractExpirationWarningDays: number;
@@ -36,6 +44,9 @@ export const Configuracion: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('perfil');
+  const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
+  const [savingSignature, setSavingSignature] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
 
   const fetchConfiguracion = async () => {
     setLoading(true);
@@ -70,6 +81,21 @@ export const Configuracion: React.FC = () => {
       setError(err.response?.data?.error || 'No se pudo guardar la configuración.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveSignature = async () => {
+    if (!signatureBase64 || !data) return;
+    setSavingSignature(true);
+    setSignatureError(null);
+    try {
+      const res = await api.put('/configuracion/landlord-signature', { signatureImage: signatureBase64 });
+      setData({ ...data, landlordSignatureUrl: res.data.landlordSignatureUrl });
+      setSignatureBase64(null);
+    } catch (err: any) {
+      setSignatureError(err.response?.data?.error || 'No se pudo guardar la firma.');
+    } finally {
+      setSavingSignature(false);
     }
   };
 
@@ -204,6 +230,48 @@ export const Configuracion: React.FC = () => {
                   className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:border-purple-650"
                 />
               </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center space-x-2.5 pb-3 border-b border-slate-100">
+                <PenTool className="w-5 h-5 text-purple-600" />
+                <h3 className="text-sm font-bold text-slate-900">Firma del arrendador</h3>
+              </div>
+              <p className="text-[11px] text-slate-450">
+                Se usa automáticamente como firma del arrendador en todos los contratos nuevos que generes. No necesitas volver a firmar cada contrato.
+              </p>
+
+              {signatureError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600">
+                  {signatureError}
+                </div>
+              )}
+
+              {data.landlordSignatureUrl && !signatureBase64 && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-500">Firma actual</label>
+                  <div className="h-24 flex items-center justify-center border border-dashed border-slate-300 rounded-2xl bg-slate-50 p-3">
+                    <img src={getImageUrl(data.landlordSignatureUrl)} alt="Firma del arrendador" className="h-full object-contain max-w-[200px]" />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500">
+                  {data.landlordSignatureUrl ? 'Reemplazar firma' : 'Dibuja tu firma'}
+                </label>
+                <SignaturePad onSave={setSignatureBase64} onClear={() => setSignatureBase64(null)} />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveSignature}
+                disabled={!signatureBase64 || savingSignature}
+                className="flex items-center py-2.5 px-6 bg-[#A855F7] hover:bg-purple-600 text-white text-xs font-bold rounded-xl transition-all shadow-sm disabled:opacity-50"
+              >
+                <Save className="w-4 h-4 mr-1.5" />
+                {savingSignature ? 'Guardando...' : 'Guardar firma'}
+              </button>
             </div>
           </>
         )}

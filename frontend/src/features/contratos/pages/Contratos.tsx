@@ -3,6 +3,7 @@ import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { User, Shield, Building, Printer, CheckCircle, AlertTriangle, Search, Filter, RefreshCw, Edit2 } from 'lucide-react';
 import { Pagination } from '../../../core/components/ui/Pagination';
+import { SignaturePad } from '../../../core/components/ui/SignaturePad';
 
 interface Contrato {
   id: number;
@@ -23,6 +24,7 @@ interface Contrato {
   landlordName?: string;
   landlordRuc?: string;
   landlordAddress?: string;
+  landlordSignatureUrl?: string;
   specialTerms?: string;
   signatureUrl?: string;
   acceptedTerms: boolean;
@@ -41,106 +43,6 @@ const SERVICE_LABELS: Record<string, string> = {
   Estacionamiento: 'Estacionamiento',
   Gimnasio: 'Gimnasio',
   Piscina: 'Piscina'
-};
-
-interface SignaturePadProps {
-  onSave: (base64: string) => void;
-  onClear: () => void;
-}
-
-const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear }) => {
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = React.useState(false);
-
-  const getCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
-  };
-
-  const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#1e293b'; // Slate 800 for ink
-    const coords = getCoordinates(e);
-    ctx.beginPath();
-    ctx.moveTo(coords.x, coords.y);
-    setIsDrawing(true);
-    if (e.pointerType === 'touch') {
-      canvas.style.touchAction = 'none';
-    }
-  };
-
-  const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const coords = getCoordinates(e);
-    ctx.lineTo(coords.x, coords.y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-    const canvas = canvasRef.current;
-    if (canvas) {
-      canvas.style.touchAction = 'auto';
-      const base64 = canvas.toDataURL('image/png');
-      onSave(base64);
-    }
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    onClear();
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="relative border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-900 shadow-inner">
-        <canvas
-          ref={canvasRef}
-          width={450}
-          height={180}
-          className="w-full h-[180px] cursor-crosshair touch-none bg-slate-50 dark:bg-slate-900"
-          onPointerDown={startDrawing}
-          onPointerMove={draw}
-          onPointerUp={stopDrawing}
-          onPointerLeave={stopDrawing}
-        />
-        <div className="absolute bottom-2 right-2">
-          <button
-            type="button"
-            onClick={clearCanvas}
-            className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-slate-200 border border-slate-200 dark:border-slate-750 rounded-lg text-[9px] font-bold shadow-sm transition-all"
-          >
-            Limpiar Lienzo
-          </button>
-        </div>
-      </div>
-      <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium">
-        Usa tu mouse o pantalla táctil en el recuadro de arriba para dibujar tu firma.
-      </p>
-    </div>
-  );
 };
 
 export const Contratos: React.FC = () => {
@@ -591,8 +493,16 @@ export const Contratos: React.FC = () => {
           {/* Firmas */}
           <div className="grid grid-cols-2 gap-8 border-t border-slate-150 pt-8 mt-6 z-10 relative">
             <div className="text-center space-y-4">
-              <div className="h-16 flex items-center justify-center font-mono text-slate-350 italic text-[10px] border-b border-dashed border-slate-300">
-                [ Firma Digitalizada / Representante ]
+              <div className="h-16 flex items-center justify-center border-b border-dashed border-slate-300">
+                {myContract.landlordSignatureUrl ? (
+                  <img
+                    src={getImageUrl(myContract.landlordSignatureUrl)}
+                    alt="Firma Arrendador"
+                    className="h-full object-contain max-w-[150px]"
+                  />
+                ) : (
+                  <span className="font-mono text-slate-350 italic text-[10px]">[ Firma Digitalizada / Representante ]</span>
+                )}
               </div>
               <p className="font-bold text-slate-800">El Arrendador</p>
               <p className="text-[10px] text-slate-400">{getLandlordName(myContract)}</p>
@@ -996,8 +906,16 @@ export const Contratos: React.FC = () => {
                 {/* Firmas */}
                 <div className="grid grid-cols-2 gap-8 border-t border-slate-200/65 pt-6 mt-6">
                   <div className="text-center space-y-3">
-                    <div className="h-12 flex items-center justify-center font-mono text-slate-350 italic text-[10px] border-b border-dashed border-slate-300">
-                      [ Firma Digitalizada ]
+                    <div className="h-12 flex items-center justify-center border-b border-dashed border-slate-300">
+                      {selectedContract.landlordSignatureUrl ? (
+                        <img
+                          src={getImageUrl(selectedContract.landlordSignatureUrl)}
+                          alt="Firma Arrendador"
+                          className="h-full object-contain max-w-[120px]"
+                        />
+                      ) : (
+                        <span className="font-mono text-slate-350 italic text-[10px]">[ Firma Digitalizada ]</span>
+                      )}
                     </div>
                     <p className="font-bold text-slate-800">El Arrendador</p>
                   </div>

@@ -208,6 +208,7 @@ export const createInquilino = async (req: Request, res: Response): Promise<void
             landlordName: tenantRecordForContract?.companyName || null,
             landlordRuc: tenantRecordForContract?.landlordRuc || null,
             landlordAddress: tenantRecordForContract?.landlordAddress || null,
+            landlordSignatureUrl: tenantRecordForContract?.landlordSignatureUrl || null,
             acceptedTerms: false
           }
         });
@@ -686,6 +687,7 @@ export const cambiarHabitacionInquilino = async (req: Request, res: Response): P
           landlordName: tenantRecord?.companyName || null,
           landlordRuc: tenantRecord?.landlordRuc || null,
           landlordAddress: tenantRecord?.landlordAddress || null,
+          landlordSignatureUrl: tenantRecord?.landlordSignatureUrl || null,
           acceptedTerms: false
         }
       });

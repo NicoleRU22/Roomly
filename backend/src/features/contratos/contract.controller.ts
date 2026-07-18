@@ -70,6 +70,7 @@ export const getContratos = async (req: Request, res: Response): Promise<void> =
       landlordName: c.landlordName || undefined,
       landlordRuc: c.landlordRuc || undefined,
       landlordAddress: c.landlordAddress || undefined,
+      landlordSignatureUrl: c.landlordSignatureUrl || undefined,
       specialTerms: c.specialTerms || undefined,
       signatureUrl: c.signatureUrl || undefined,
       acceptedTerms: c.acceptedTerms,
@@ -370,6 +371,7 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
             landlordName: existing.landlordName,
             landlordRuc: existing.landlordRuc,
             landlordAddress: existing.landlordAddress,
+            landlordSignatureUrl: existing.landlordSignatureUrl,
             specialTerms: existing.specialTerms,
             acceptedTerms: false
           }

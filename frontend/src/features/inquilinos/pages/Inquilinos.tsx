@@ -65,6 +65,7 @@ interface Contrato {
   status: string;
   propertyServices?: string;
   signatureUrl?: string;
+  landlordSignatureUrl?: string;
 }
 
 const PAGE_SIZE = 8;
@@ -905,8 +906,16 @@ export const Inquilinos: React.FC = () => {
                 {/* Firma en el visualizador */}
                 <div className="grid grid-cols-2 gap-4 border-t pt-4 mt-4">
                   <div className="text-center">
-                    <div className="h-10 flex items-center justify-center text-[10px] text-slate-400 italic border-b border-dashed">
-                      [ Firma Digital ]
+                    <div className="h-10 flex items-center justify-center border-b border-dashed">
+                      {viewingContract.landlordSignatureUrl ? (
+                        <img
+                          src={getImageUrl(viewingContract.landlordSignatureUrl)}
+                          alt="Firma Arrendador"
+                          className="h-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">[ Firma Digital ]</span>
+                      )}
                     </div>
                     <span className="text-[10px] font-bold block mt-1 text-slate-700">El Arrendador</span>
                   </div>
