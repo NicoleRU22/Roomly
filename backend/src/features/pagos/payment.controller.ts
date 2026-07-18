@@ -230,7 +230,7 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
 
     // Si el inquilino sube una imagen de comprobante (Yape/Transferencia)
     if (isTenant && receiptImage) {
-      const imageUrl = saveBase64Image(receiptImage, 'receipts');
+      const imageUrl = await saveBase64Image(receiptImage, 'receipts');
       
       const updated = await prisma.payment.update({
         where: { id: paymentId },

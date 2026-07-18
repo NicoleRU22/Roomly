@@ -126,7 +126,7 @@ export const createTicket = async (req: Request, res: Response): Promise<void> =
     // 2. Guardar imagen si se envía en base64
     let imageUrl: string | null = null;
     if (image) {
-      imageUrl = saveBase64Image(image, 'tickets');
+      imageUrl = await saveBase64Image(image, 'tickets');
     }
 
     const finalPriority = priority || 'MEDIA';

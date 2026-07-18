@@ -288,8 +288,8 @@ export const signContrato = async (req: Request, res: Response): Promise<void> =
       }
     }
 
-    // Decodificar y guardar la firma en el subdirectorio de firmas
-    const signatureUrl = saveBase64Image(signatureImage, 'signatures');
+    // Subir la firma a Cloudinary
+    const signatureUrl = await saveBase64Image(signatureImage, 'signatures');
 
     const updated = await prisma.contrato.update({
         where: { id: contratoId },
