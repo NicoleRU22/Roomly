@@ -8,7 +8,7 @@ const MONTH_NAMES = [
 
 // Calcula la fecha de vencimiento del ciclo de facturación vigente para un contrato,
 // usando el día de cobro configurado (o, si no se configuró, el día del mes en que inició el contrato).
-const getCurrentBillingDate = (startDate: Date, today: Date, diaCobro?: number | null): Date => {
+export const getCurrentBillingDate = (startDate: Date, today: Date, diaCobro?: number | null): Date => {
   const billingDay = diaCobro || startDate.getUTCDate();
 
   const clampToMonth = (year: number, month: number, day: number): Date => {

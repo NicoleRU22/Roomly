@@ -8,7 +8,10 @@
     "build": "npx prisma generate && tsc",
     "start": "npx prisma migrate deploy && node dist/index.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -36,9 +39,12 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "cross-env": "^7.0.3",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "vitest-mock-extended": "^5.0.0"
   }
 }

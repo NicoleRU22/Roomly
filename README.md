@@ -114,6 +114,26 @@ pnpm --filter backend dev
 pnpm --filter frontend dev
 ```
 
+## 🧪 Tests
+
+El backend usa [Vitest](https://vitest.dev) con mocks type-safe de Prisma (`vitest-mock-extended`), sin necesidad de una base de datos real.
+
+```bash
+pnpm --filter backend test            # correr toda la suite una vez
+pnpm --filter backend test:watch      # modo watch mientras desarrollas
+pnpm --filter backend test:coverage   # con reporte de cobertura (texto + HTML en backend/coverage)
+```
+
+Convenciones:
+- Los tests viven junto al código que prueban (`archivo.ts` → `archivo.test.ts`).
+- `src/test-utils/prisma-mock.ts` expone `prismaMock` (mock profundo de `PrismaClient`) y `resetPrismaMock()`; mockea `../../core/db/prisma` con `vi.mock` en cada archivo de test para aislar la base de datos.
+- `src/test-utils/express-mocks.ts` expone `mockRequest`/`mockResponse` para probar controladores sin levantar Express.
+- Cobertura actual: mora y facturación recurrente de pagos (`recurring.service.ts`, `payment.controller.ts`), vencimiento automático de contratos (`contract-expiration.service.ts`), autenticación (`auth.controller.ts`), tickets de mantenimiento y su SLA (`maintenance.controller.ts`), preferencias de notificación (`notification.service.ts`) y utilidades compartidas (`pagination.ts`, `csv.ts`). Propiedades, inquilinos, mensajes, admin y servicios todavía no tienen tests — son el siguiente objetivo a cubrir.
+
+### CI
+
+El workflow [`.github/workflows/backend-tests.yml`](.github/workflows/backend-tests.yml) corre la suite de tests del backend automáticamente en cada push y pull request contra `main` (instala dependencias, genera el cliente de Prisma y ejecuta `pnpm --filter backend test`). No requiere una base de datos real porque los tests mockean Prisma. El frontend todavía no tiene tests ni un job de lint en CI (el linter actual reporta errores preexistentes que están fuera del alcance de este cambio).
+
 ## 📦 Build de Producción
 
 ### Construir todos los servicios

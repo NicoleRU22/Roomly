@@ -11,7 +11,7 @@ const SLA_DAYS_BY_PRIORITY: Record<string, number> = {
   BAJA: 7
 };
 
-const computeDueDate = (priority: string, from: Date): Date => {
+export const computeDueDate = (priority: string, from: Date): Date => {
   const days = SLA_DAYS_BY_PRIORITY[priority] ?? SLA_DAYS_BY_PRIORITY.MEDIA;
   const due = new Date(from);
   due.setDate(due.getDate() + days);

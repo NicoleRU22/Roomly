@@ -6,7 +6,7 @@ import { generateRecurringInvoices } from './recurring.service';
 
 // Helper para calcular la mora, según las reglas de cobro configuradas por el propietario
 // (graceDays: días de gracia antes de aplicar penalización; lateFeePerDay: monto por día de retraso)
-const calculateDelay = (dueDateStr: Date | string, graceDays: number = 5, lateFeePerDay: number = 5.0): number => {
+export const calculateDelay = (dueDateStr: Date | string, graceDays: number = 5, lateFeePerDay: number = 5.0): number => {
   const due = new Date(dueDateStr);
   const today = new Date();
 
@@ -614,7 +614,7 @@ export const deletePayment = async (req: Request, res: Response): Promise<void> 
 
 // --- CULQI INTEGRATION CONTROLLERS ---
 
-function mapCulqiError(result: any): string {
+export function mapCulqiError(result: any): string {
   if (!result) return 'El pago no pudo ser procesado. Intente con otra tarjeta o consulte con su banco.';
 
   if (typeof result === 'string') {
