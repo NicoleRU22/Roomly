@@ -593,9 +593,6 @@ export const Pagos: React.FC = () => {
 
   // Helper de Impresión del Recibo
   const handlePrintReceipt = (pay: Payment) => {
-    const printWindow = window.open('', '_blank', 'width=800,height=900');
-    if (!printWindow) return;
-
     const total = pay.amount + (pay.delayPenalty || 0);
     const saldo = total - pay.amountPaid;
 
@@ -780,16 +777,35 @@ export const Pagos: React.FC = () => {
               <p class="disclaimer">Comprobante interno generado por Roomly. No constituye boleta ni factura electrónica ante SUNAT.</p>
             </div>
           </div>
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+
+    // Se usa un iframe oculto en vez de window.open: los navegadores bloquean silenciosamente
+    // las ventanas emergentes abiertas por script, mientras que un iframe no cuenta como popup.
+    const existingFrame = document.getElementById('receipt-print-frame');
+    existingFrame?.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'receipt-print-frame';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentWindow?.document;
+    if (!frameDoc) return;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    iframe.onload = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    };
   };
 
   // Exportar reporte de pagos como archivo Excel profesional (todos, o solo los seleccionados si se pasa una lista)

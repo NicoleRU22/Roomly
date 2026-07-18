@@ -30,7 +30,7 @@ importers:
         version: 5.2.1(supports-color@5.5.0)
       google-auth-library:
         specifier: ^10.9.0
-        version: 10.9.0(supports-color@5.5.0)
+        version: 10.9.0
       helmet:
         specifier: ^8.2.0
         version: 8.2.0
@@ -39,7 +39,7 @@ importers:
         version: 9.0.3
       node-mailjet:
         specifier: ^6.0.11
-        version: 6.0.11(supports-color@5.5.0)
+        version: 6.0.11
       pg:
         specifier: ^8.21.0
         version: 8.21.0
@@ -65,6 +65,9 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
       nodemon:
         specifier: ^3.1.14
         version: 3.1.14
@@ -2030,6 +2033,11 @@ packages:
 
   create-require@1.1.1:
     resolution: {integrity: sha512-dcKFX3jn0MpIaXjisoRvexIJVEKzaq7z2rZKxf+MSr9TkdmHmsU4m2lcLojrj/FHl8mk5VxMmYA+ftRkP/3oKQ==}
+
+  cross-env@7.0.3:
+    resolution: {integrity: sha512-+/HKd6EgcQCJGh2PSjZuUitQBQynKor4wrFbRg4DtAgS1aWO+gU52xpH7M9ScGgXSYmAVS9bIJ8EzuaGw0oNAw==}
+    engines: {node: '>=10.14', npm: '>=6', yarn: '>=1'}
+    hasBin: true
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -5696,12 +5704,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  agent-base@6.0.2(supports-color@5.5.0):
-    dependencies:
-      debug: 4.4.3(supports-color@5.5.0)
-    transitivePeerDependencies:
-      - supports-color
-
   agent-base@7.1.4: {}
 
   ajv-formats@3.0.1(ajv@8.20.0):
@@ -5805,16 +5807,6 @@ snapshots:
       follow-redirects: 1.16.0
       form-data: 4.0.5
       https-proxy-agent: 5.0.1
-      proxy-from-env: 2.1.0
-    transitivePeerDependencies:
-      - debug
-      - supports-color
-
-  axios@1.16.1(supports-color@5.5.0):
-    dependencies:
-      follow-redirects: 1.16.0
-      form-data: 4.0.5
-      https-proxy-agent: 5.0.1(supports-color@5.5.0)
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
@@ -6049,6 +6041,10 @@ snapshots:
       readable-stream: 3.6.2
 
   create-require@1.1.1: {}
+
+  cross-env@7.0.3:
+    dependencies:
+      cross-spawn: 7.0.6
 
   cross-spawn@7.0.6:
     dependencies:
@@ -6492,17 +6488,17 @@ snapshots:
 
   fuzzysort@3.1.0: {}
 
-  gaxios@7.1.5(supports-color@5.5.0):
+  gaxios@7.1.5:
     dependencies:
       extend: 3.0.2
-      https-proxy-agent: 7.0.6(supports-color@5.5.0)
+      https-proxy-agent: 7.0.6
       node-fetch: 3.3.2
     transitivePeerDependencies:
       - supports-color
 
   gcp-metadata@8.1.2:
     dependencies:
-      gaxios: 7.1.5(supports-color@5.5.0)
+      gaxios: 7.1.5
       google-logging-utils: 1.1.3
       json-bigint: 1.0.0
     transitivePeerDependencies:
@@ -6570,11 +6566,11 @@ snapshots:
 
   globals@17.6.0: {}
 
-  google-auth-library@10.9.0(supports-color@5.5.0):
+  google-auth-library@10.9.0:
     dependencies:
       base64-js: 1.5.1
       ecdsa-sig-formatter: 1.0.11
-      gaxios: 7.1.5(supports-color@5.5.0)
+      gaxios: 7.1.5
       gcp-metadata: 8.1.2
       google-logging-utils: 1.1.3
       jws: 4.0.1
@@ -6637,21 +6633,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  https-proxy-agent@5.0.1(supports-color@5.5.0):
-    dependencies:
-      agent-base: 6.0.2(supports-color@5.5.0)
-      debug: 4.4.3(supports-color@5.5.0)
-    transitivePeerDependencies:
-      - supports-color
-
   https-proxy-agent@7.0.6:
-    dependencies:
-      agent-base: 7.1.4
-      debug: 4.4.3(supports-color@5.5.0)
-    transitivePeerDependencies:
-      - supports-color
-
-  https-proxy-agent@7.0.6(supports-color@5.5.0):
     dependencies:
       agent-base: 7.1.4
       debug: 4.4.3(supports-color@5.5.0)
@@ -7064,9 +7046,9 @@ snapshots:
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
 
-  node-mailjet@6.0.11(supports-color@5.5.0):
+  node-mailjet@6.0.11:
     dependencies:
-      axios: 1.16.1(supports-color@5.5.0)
+      axios: 1.16.1
       json-bigint: 1.0.0
       url-join: 4.0.1
     transitivePeerDependencies:
