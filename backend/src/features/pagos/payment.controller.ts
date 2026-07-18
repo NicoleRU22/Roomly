@@ -38,11 +38,12 @@ export const getAllPayments = async (req: Request, res: Response): Promise<void>
         where: { id: userId }
       });
       if (user) {
-        const inquilino = await prisma.inquilino.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+        const inquilinos = await prisma.inquilino.findMany({
+          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+          select: { id: true }
         });
-        if (inquilino) {
-          whereClause.inquilinoId = inquilino.id;
+        if (inquilinos.length > 0) {
+          whereClause.inquilinoId = { in: inquilinos.map((i) => i.id) };
         } else {
           res.json([]);
           return;
@@ -213,10 +214,11 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
     if (isTenant) {
       const user = await prisma.usuario.findUnique({ where: { id: req.userId! } });
       if (user) {
-        const inquilino = await prisma.inquilino.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+        const inquilinos = await prisma.inquilino.findMany({
+          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+          select: { id: true }
         });
-        if (!inquilino || existing.inquilinoId !== inquilino.id) {
+        if (!inquilinos.some((i) => i.id === existing.inquilinoId)) {
           res.status(403).json({ error: 'Acceso denegado. No puedes registrar pagos en este comprobante.' });
           return;
         }

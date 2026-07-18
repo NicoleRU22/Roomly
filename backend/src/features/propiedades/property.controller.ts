@@ -18,7 +18,8 @@ export const getAllProperties = async (req: Request, res: Response): Promise<voi
       const user = await prisma.usuario.findUnique({ where: { id: userId } });
       if (user) {
         const inquilino = await prisma.inquilino.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+          orderBy: { id: 'desc' }
         });
         if (inquilino && inquilino.propertyId) {
           whereClause.id = inquilino.propertyId;
@@ -179,7 +180,8 @@ export const getRoomsByProperty = async (req: Request, res: Response): Promise<v
       const user = await prisma.usuario.findUnique({ where: { id: userId } });
       if (user) {
         const inquilino = await prisma.inquilino.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+          orderBy: { id: 'desc' }
         });
         if (!inquilino || inquilino.propertyId !== pId) {
           res.status(403).json({ error: 'Acceso denegado. No puedes ver habitaciones de esta propiedad.' });

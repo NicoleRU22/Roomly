@@ -14,7 +14,8 @@ export const getAllServicios = async (req: Request, res: Response): Promise<void
       const user = await prisma.usuario.findUnique({ where: { id: userId } });
       if (user) {
         const inquilino = await prisma.inquilino.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+          orderBy: { id: 'desc' }
         });
         if (inquilino) {
           whereClause.OR = [];

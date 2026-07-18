@@ -29,11 +29,12 @@ export const getTickets = async (req: Request, res: Response): Promise<void> => 
     if (userRole === 'INQUILINO') {
       const user = await prisma.usuario.findUnique({ where: { id: userId } });
       if (user) {
-        const inquilino = await prisma.inquilino.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+        const inquilinos = await prisma.inquilino.findMany({
+          where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+          select: { id: true }
         });
-        if (inquilino) {
-          whereClause.inquilinoId = inquilino.id;
+        if (inquilinos.length > 0) {
+          whereClause.inquilinoId = { in: inquilinos.map((i) => i.id) };
         } else {
           const { page, limit, isPaginated } = getPaginationParams(req);
           res.json(isPaginated ? buildPaginatedResponse([], 0, page, limit) : []);
@@ -113,7 +114,8 @@ export const createTicket = async (req: Request, res: Response): Promise<void> =
     }
 
     const inquilino = await prisma.inquilino.findFirst({
-      where: { email: { equals: user.email, mode: 'insensitive' }, tenantId }
+      where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
+      orderBy: { id: 'desc' }
     });
 
     if (!inquilino) {

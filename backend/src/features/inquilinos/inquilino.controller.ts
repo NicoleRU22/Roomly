@@ -79,7 +79,8 @@ export const getMyInfo = async (req: Request, res: Response): Promise<void> => {
     // 2. Buscar inquilino con ese email e igual tenantId
     const inquilino = await prisma.inquilino.findFirst({
       where: { email: { equals: user.email, mode: 'insensitive' }, tenantId },
-      include: { property: true, room: true }
+      include: { property: true, room: true },
+      orderBy: { id: 'desc' }
     });
 
     if (!inquilino) {
