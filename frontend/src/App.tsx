@@ -28,6 +28,10 @@ import { Configuracion } from './features/configuracion/pages/Configuracion';
 import { AdminOverview } from './features/admin/pages/AdminOverview';
 import { AdminTenants } from './features/admin/pages/AdminTenants';
 import { AdminUsuarios } from './features/admin/pages/AdminUsuarios';
+import { AdminAuditoria } from './features/admin/pages/AdminAuditoria';
+import { AdminAlertas } from './features/admin/pages/AdminAlertas';
+import { AdminSesiones } from './features/admin/pages/AdminSesiones';
+import { AdminSalud } from './features/admin/pages/AdminSalud';
 
 // Componente para Proteger Rutas
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -83,6 +87,10 @@ function App() {
           <Route path="dashboard" element={<AdminOverview />} />
           <Route path="tenants" element={<AdminTenants />} />
           <Route path="usuarios" element={<AdminUsuarios />} />
+          <Route path="auditoria" element={<AdminAuditoria />} />
+          <Route path="alertas" element={<AdminAlertas />} />
+          <Route path="sesiones" element={<AdminSesiones />} />
+          <Route path="salud" element={<AdminSalud />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Route>
 

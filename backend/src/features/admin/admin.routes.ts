@@ -1,6 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../core/middlewares/auth.middleware';
-import { getOverview, listTenants, listUsuarios, deleteUsuario, getGrowth } from './admin.controller';
+import {
+  getOverview, listTenants, listUsuarios, deleteUsuario, getGrowth,
+  listAuditLogs, exportAuditLogs, getAlerts, listSessions, revokeSession,
+  getHealth, exportUsuarios, exportTenants
+} from './admin.controller';
 
 const router = Router();
 
@@ -19,8 +23,16 @@ router.use(requireAdmin);
 
 router.get('/overview', getOverview);
 router.get('/tenants', listTenants);
+router.get('/tenants/export', exportTenants);
 router.get('/usuarios', listUsuarios);
+router.get('/usuarios/export', exportUsuarios);
 router.delete('/usuarios/:id', deleteUsuario);
 router.get('/growth', getGrowth);
+router.get('/audit-logs', listAuditLogs);
+router.get('/audit-logs/export', exportAuditLogs);
+router.get('/alerts', getAlerts);
+router.get('/sessions', listSessions);
+router.post('/sessions/:id/revoke', revokeSession);
+router.get('/health', getHealth);
 
 export default router;

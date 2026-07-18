@@ -64,6 +64,45 @@ model Usuario {
   notifications Notification[]
   sentMensajes     Mensaje[] @relation("MensajesEnviados")
   receivedMensajes Mensaje[] @relation("MensajesRecibidos")
+  sessions      Session[]
+}
+
+// Auditoría genérica de la plataforma: acciones del ADMIN, intentos de login fallidos
+// (para detectar fuerza bruta) y eventos de sistema (corridas de jobs, errores del servidor).
+// Se usa una sola tabla para no duplicar esquemas casi idénticos; "category"/"action" distinguen el origen.
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  category   String   // "ADMIN" | "AUTH" | "SYSTEM"
+  action     String   // "USUARIO_ELIMINADO", "LOGIN_FAILED", "SESSION_REVOKED", "JOB_RUN", "SERVER_ERROR", ...
+  actorId    Int?     // Nulo en eventos de sistema o login fallido (no hay usuario autenticado)
+  actorEmail String?  // Snapshot: sobrevive si el actor se borra
+  targetType String?
+  targetId   String?
+  metadata   String?  // JSON.stringify con detalle libre
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([category, createdAt])
+  @@index([action, createdAt])
+  @@index([actorEmail, createdAt])
+}
+
+// Sesión asociada a cada JWT emitido (via jti), para poder listar sesiones activas y revocarlas
+// individualmente. El JWT deja de ser puramente stateless: authMiddleware valida esta tabla en cada request.
+model Session {
+  id         Int       @id @default(autoincrement())
+  jti        String    @unique
+  usuarioId  Int
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastSeenAt DateTime  @default(now())
+
+  @@index([usuarioId])
 }
 
 model Property {

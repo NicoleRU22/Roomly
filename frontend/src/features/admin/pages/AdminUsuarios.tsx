@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Download } from 'lucide-react';
 import api from '../../../core/services/api';
 import { ConfirmModal } from '../../../core/components/ui/ConfirmModal';
 import { useAuthStore } from '../../auth/store/useAuthStore';
-import { formatDate, formatLastActivity } from '../utils';
+import { formatDate, formatLastActivity, downloadCsv } from '../utils';
 
 interface UsuarioRow {
   id: number;
@@ -33,6 +33,18 @@ export const AdminUsuarios: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<UsuarioRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await downloadCsv('/admin/usuarios/export', `usuarios-roomly-${new Date().toISOString().split('T')[0]}.csv`);
+    } catch {
+      setError('No se pudo exportar los usuarios.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchUsuarios = async () => {
     setLoading(true);
@@ -103,6 +115,14 @@ export const AdminUsuarios: React.FC = () => {
             <option value="PROPIETARIO">Propietario</option>
             <option value="INQUILINO">Inquilino</option>
           </select>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-650 hover:bg-purple-750 disabled:opacity-60 text-white text-xs font-bold rounded-lg transition-colors"
+          >
+            <Download size={14} />
+            {exporting ? 'Exportando...' : 'Exportar CSV'}
+          </button>
         </div>
       </div>
 

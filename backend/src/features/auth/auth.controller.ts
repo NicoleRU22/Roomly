@@ -5,19 +5,40 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import prisma from '../../core/db/prisma';
 import { sendVerificationEmail, sendPasswordResetEmail, sendPasswordChangedEmail } from '../../core/services/email.service';
+import { logEvent } from '../../core/services/audit.service';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'roomly-super-secret-key';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hora
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas, igual al expiresIn del JWT
 
-const signToken = (user: { id: number; email: string; role: string; tenantId: number | null }, tenantSlug: string | null) =>
-  jwt.sign(
-    { userId: user.id, email: user.email, role: user.role, tenantId: user.tenantId, tenantSlug },
+// Firma el JWT y crea la Session asociada (via jti) para poder listarla/revocarla desde el panel admin.
+const signToken = async (
+  user: { id: number; email: string; role: string; tenantId: number | null },
+  tenantSlug: string | null,
+  req?: Request
+) => {
+  const jti = crypto.randomUUID();
+  const token = jwt.sign(
+    { userId: user.id, email: user.email, role: user.role, tenantId: user.tenantId, tenantSlug, jti },
     JWT_SECRET,
     { expiresIn: '24h' }
   );
+
+  await prisma.session.create({
+    data: {
+      jti,
+      usuarioId: user.id,
+      ip: req?.ip,
+      userAgent: req?.headers['user-agent'] as string | undefined,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
+
+  return token;
+};
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { email, password, firstName, lastName, companyName, slug } = req.body;
@@ -122,18 +143,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!user) {
+      await logEvent({ category: 'AUTH', action: 'LOGIN_FAILED', actorEmail: email, metadata: { reason: 'usuario_no_existe' }, req });
       res.status(401).json({ error: 'Credenciales inválidas.' });
       return;
     }
 
     // Verificar contraseña (las cuentas creadas vía Google no tienen contraseña local)
     if (!user.password) {
+      await logEvent({ category: 'AUTH', action: 'LOGIN_FAILED', actorEmail: email, metadata: { reason: 'cuenta_google' }, req });
       res.status(401).json({ error: 'Esta cuenta fue creada con Google. Inicia sesión con Google.' });
       return;
     }
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
+      await logEvent({ category: 'AUTH', action: 'LOGIN_FAILED', actorEmail: email, metadata: { reason: 'password_incorrecta' }, req });
       res.status(401).json({ error: 'Credenciales inválidas.' });
       return;
     }
@@ -143,7 +167,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const token = signToken(user, user.tenant?.slug ?? null);
+    const token = await signToken(user, user.tenant?.slug ?? null, req);
 
     await prisma.usuario.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
@@ -241,7 +265,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
             include: { tenant: true }
           });
 
-      const token = signToken(user, user.tenant!.slug);
+      const token = await signToken(user, user.tenant!.slug, req);
 
       await prisma.usuario.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
@@ -298,7 +322,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
       return { tenant, user };
     });
 
-    const token = signToken(result.user, result.tenant.slug);
+    const token = await signToken(result.user, result.tenant.slug, req);
 
     res.status(201).json({
       token,
@@ -349,7 +373,7 @@ export const verifyEmail = async (req: Request, res: Response): Promise<void> =>
     });
 
     // Este flujo solo aplica a cuentas creadas vía register(), que siempre tienen tenant (los ADMIN se crean ya verificados, aparte).
-    const jwtToken = signToken(verifiedUser, verifiedUser.tenant!.slug);
+    const jwtToken = await signToken(verifiedUser, verifiedUser.tenant!.slug, req);
 
     res.json({
       message: 'Correo verificado correctamente.',

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { Download } from 'lucide-react';
 import api from '../../../core/services/api';
-import { formatDate, formatLastActivity } from '../utils';
+import { formatDate, formatLastActivity, downloadCsv } from '../utils';
 
 interface TenantRow {
   id: number;
@@ -22,6 +23,18 @@ export const AdminTenants: React.FC = () => {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await downloadCsv('/admin/tenants/export', `tenants-roomly-${new Date().toISOString().split('T')[0]}.csv`);
+    } catch {
+      setError('No se pudo exportar los tenants.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchTenants = async () => {
@@ -46,6 +59,14 @@ export const AdminTenants: React.FC = () => {
         <h2 className="text-sm font-black uppercase tracking-wider text-muted-foreground">
           Tenants ({tenants.length})
         </h2>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-650 hover:bg-purple-750 disabled:opacity-60 text-white text-xs font-bold rounded-lg transition-colors"
+        >
+          <Download size={14} />
+          {exporting ? 'Exportando...' : 'Exportar CSV'}
+        </button>
       </div>
 
       {loading ? (

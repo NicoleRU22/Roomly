@@ -2,13 +2,17 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore';
-import { LayoutGrid, Building2, Users, LogOut, Menu, X, Moon, Sun, ShieldCheck } from 'lucide-react';
+import { LayoutGrid, Building2, Users, LogOut, Menu, X, Moon, Sun, ShieldCheck, ScrollText, ShieldAlert, Radio, HeartPulse } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
 const navItems = [
   { label: 'Resumen', path: '/admin/dashboard', icon: <LayoutGrid className="w-5 h-5" /> },
   { label: 'Tenants', path: '/admin/tenants', icon: <Building2 className="w-5 h-5" /> },
   { label: 'Usuarios', path: '/admin/usuarios', icon: <Users className="w-5 h-5" /> },
+  { label: 'Auditoría', path: '/admin/auditoria', icon: <ScrollText className="w-5 h-5" /> },
+  { label: 'Alertas', path: '/admin/alertas', icon: <ShieldAlert className="w-5 h-5" /> },
+  { label: 'Sesiones', path: '/admin/sesiones', icon: <Radio className="w-5 h-5" /> },
+  { label: 'Salud', path: '/admin/salud', icon: <HeartPulse className="w-5 h-5" /> },
 ];
 
 export const AdminLayout: React.FC = () => {

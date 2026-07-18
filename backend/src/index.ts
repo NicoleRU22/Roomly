@@ -16,6 +16,7 @@ import mensajeRoutes from './features/mensajes/mensaje.routes';
 import adminRoutes from './features/admin/admin.routes';
 import { generateRecurringInvoices } from './features/pagos/recurring.service';
 import { checkContractExpirations } from './features/contratos/contract-expiration.service';
+import { logEvent } from './core/services/audit.service';
 
 dotenv.config();
 
@@ -104,6 +105,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   }
 
   console.error('Error no controlado:', err);
+  logEvent({ category: 'SYSTEM', action: 'SERVER_ERROR', metadata: { message: err?.message, path: req.path, method: req.method } });
   res.status(500).json({ error: 'Error interno del servidor.' });
 });
 
@@ -113,24 +115,34 @@ app.listen(PORT, () => {
   // Generación automática de recibos de alquiler recurrentes: al iniciar y luego cada 24h
   const DAY_MS = 24 * 60 * 60 * 1000;
   const runRecurringInvoicesJob = () => {
+    const startedAt = Date.now();
     generateRecurringInvoices()
       .then(({ created }) => {
         if (created > 0) console.log(`[Cron] Recibos recurrentes generados automáticamente: ${created}`);
+        logEvent({ category: 'SYSTEM', action: 'JOB_RUN', metadata: { jobName: 'recurring_invoices', success: true, created, durationMs: Date.now() - startedAt } });
       })
-      .catch((err) => console.error('[Cron] Error generando recibos recurrentes:', err));
+      .catch((err) => {
+        console.error('[Cron] Error generando recibos recurrentes:', err);
+        logEvent({ category: 'SYSTEM', action: 'JOB_RUN', metadata: { jobName: 'recurring_invoices', success: false, error: String(err?.message || err), durationMs: Date.now() - startedAt } });
+      });
   };
   runRecurringInvoicesJob();
   setInterval(runRecurringInvoicesJob, DAY_MS);
 
   // Chequeo de vencimiento de contratos: avisa próximos a vencer y finaliza los vencidos
   const runContractExpirationJob = () => {
+    const startedAt = Date.now();
     checkContractExpirations()
       .then(({ finalizados, avisos }) => {
         if (finalizados > 0 || avisos > 0) {
           console.log(`[Cron] Contratos finalizados: ${finalizados}, avisos de vencimiento enviados: ${avisos}`);
         }
+        logEvent({ category: 'SYSTEM', action: 'JOB_RUN', metadata: { jobName: 'contract_expiration', success: true, finalizados, avisos, durationMs: Date.now() - startedAt } });
       })
-      .catch((err) => console.error('[Cron] Error revisando vencimiento de contratos:', err));
+      .catch((err) => {
+        console.error('[Cron] Error revisando vencimiento de contratos:', err);
+        logEvent({ category: 'SYSTEM', action: 'JOB_RUN', metadata: { jobName: 'contract_expiration', success: false, error: String(err?.message || err), durationMs: Date.now() - startedAt } });
+      });
   };
   runContractExpirationJob();
   setInterval(runContractExpirationJob, DAY_MS);

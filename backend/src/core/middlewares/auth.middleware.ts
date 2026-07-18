@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import prisma from '../db/prisma';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'roomly-super-secret-key';
 
@@ -8,9 +9,10 @@ interface DecodedToken {
   role: string;
   tenantId: number | null;
   email: string;
+  jti: string;
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Acceso denegado. Token no proporcionado.' });
@@ -20,6 +22,13 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
+
+    // Validar la sesión asociada al jti: permite revocar tokens individuales desde el panel admin.
+    const session = await prisma.session.findUnique({ where: { jti: decoded.jti } });
+    if (!session || session.revokedAt || session.expiresAt < new Date()) {
+      return res.status(401).json({ error: 'Sesión revocada o expirada.' });
+    }
+    prisma.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
 
     // Adjuntar datos del usuario al request
     req.userId = decoded.userId;
