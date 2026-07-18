@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../core/services/api';
 import { useAuthStore } from '../../../features/auth/store/useAuthStore';
-import { User, Key, Mail, Shield, Smartphone } from 'lucide-react';
+import { User, Key, Mail, Shield, Smartphone, Save } from 'lucide-react';
 
 export const Perfil: React.FC = () => {
   const { user, tenant } = useAuthStore();
   const [phone, setPhone] = useState('-');
   const [document, setDocument] = useState('-');
   const [loading, setLoading] = useState(true);
+
+  // Edición de datos personales (solo propietario/admin; el inquilino edita los suyos en Inquilinos)
+  const [editPhone, setEditPhone] = useState('');
+  const [editDocument, setEditDocument] = useState('');
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [infoSuccess, setInfoSuccess] = useState<string | null>(null);
+  const [infoError, setInfoError] = useState<string | null>(null);
 
   // Estados para cambio de contraseña
   const [currentPassword, setCurrentPassword] = useState('');
@@ -25,9 +32,11 @@ export const Perfil: React.FC = () => {
         setPhone(res.data.phone || 'No registrado');
         setDocument(res.data.document || 'No registrado');
       } else {
-        // Los datos del propietario son del tenant/admin
-        setDocument('N/A (Propietario)');
-        setPhone('No registrado');
+        const res = await api.get('/configuracion');
+        setDocument(res.data.ownerDocument || 'No registrado');
+        setPhone(res.data.ownerPhone || 'No registrado');
+        setEditDocument(res.data.ownerDocument || '');
+        setEditPhone(res.data.ownerPhone || '');
       }
     } catch (err) {
       console.error('Error al cargar info de perfil:', err);
@@ -72,6 +81,23 @@ export const Perfil: React.FC = () => {
     }
   };
 
+  const handleSaveInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInfoSuccess(null);
+    setInfoError(null);
+    setSavingInfo(true);
+    try {
+      const res = await api.put('/configuracion', { ownerPhone: editPhone, ownerDocument: editDocument });
+      setDocument(res.data.ownerDocument || 'No registrado');
+      setPhone(res.data.ownerPhone || 'No registrado');
+      setInfoSuccess('Información actualizada con éxito.');
+    } catch (err: any) {
+      setInfoError(err.response?.data?.error || 'No se pudo actualizar la información.');
+    } finally {
+      setSavingInfo(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[50vh] text-slate-500">
@@ -113,21 +139,68 @@ export const Perfil: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <Shield className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Documento (DNI/CE)</p>
-                <p className="font-semibold text-slate-800">{document}</p>
-              </div>
-            </div>
+            {user?.role === 'INQUILINO' ? (
+              <>
+                <div className="flex items-center space-x-3">
+                  <Shield className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Documento (DNI/CE)</p>
+                    <p className="font-semibold text-slate-800">{document}</p>
+                  </div>
+                </div>
 
-            <div className="flex items-center space-x-3">
-              <Smartphone className="w-4 h-4 text-slate-400 shrink-0" />
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Teléfono de contacto</p>
-                <p className="font-semibold text-slate-800">{phone}</p>
-              </div>
-            </div>
+                <div className="flex items-center space-x-3">
+                  <Smartphone className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Teléfono de contacto</p>
+                    <p className="font-semibold text-slate-800">{phone}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={handleSaveInfo} className="space-y-3">
+                {infoError && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] text-red-600">{infoError}</div>
+                )}
+                {infoSuccess && (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-600">{infoSuccess}</div>
+                )}
+                <div className="flex items-start space-x-3">
+                  <Shield className="w-4 h-4 text-slate-400 shrink-0 mt-2.5" />
+                  <div className="flex-1">
+                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Documento (DNI/CE)</label>
+                    <input
+                      type="text"
+                      value={editDocument}
+                      onChange={(e) => setEditDocument(e.target.value)}
+                      placeholder="Ej. 12345678"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <Smartphone className="w-4 h-4 text-slate-400 shrink-0 mt-2.5" />
+                  <div className="flex-1">
+                    <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Teléfono de contacto</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="Ej. 987654321"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-purple-650"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={savingInfo}
+                  className="w-full flex items-center justify-center py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5 mr-1.5" />
+                  {savingInfo ? 'Guardando...' : 'Guardar datos'}
+                </button>
+              </form>
+            )}
 
             <div className="flex items-center space-x-3">
               <User className="w-4 h-4 text-slate-400 shrink-0" />

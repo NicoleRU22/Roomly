@@ -57,6 +57,8 @@ model Usuario {
   resetTokenExpiry        DateTime?
   firstName     String
   lastName      String?
+  phone         String?
+  document      String?
   role          String          // "PROPIETARIO", "INQUILINO" o "ADMIN"
   tenantId      Int?            // Nulo para el superadmin de plataforma (rol ADMIN, no pertenece a ningún tenant)
   tenant        Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -32,7 +32,9 @@ export const getConfiguracion = async (req: Request, res: Response): Promise<voi
       notifyTicketCreado: tenant.notifyTicketCreado,
       ownerFirstName: owner?.firstName || '',
       ownerLastName: owner?.lastName || '',
-      ownerEmail: owner?.email || ''
+      ownerEmail: owner?.email || '',
+      ownerPhone: owner?.phone || '',
+      ownerDocument: owner?.document || ''
     });
   } catch (error) {
     console.error('Error en getConfiguracion:', error);
@@ -64,7 +66,9 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
     notifyTicketCreado,
     ownerFirstName,
     ownerLastName,
-    ownerEmail
+    ownerEmail,
+    ownerPhone,
+    ownerDocument
   } = req.body;
 
   if (defaultBillingDay !== undefined && defaultBillingDay !== null && defaultBillingDay !== '') {
@@ -120,7 +124,9 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
         data: {
           firstName: ownerFirstName !== undefined ? String(ownerFirstName).trim() : undefined,
           lastName: ownerLastName !== undefined ? String(ownerLastName).trim() || null : undefined,
-          email: normalizedEmail
+          email: normalizedEmail,
+          phone: ownerPhone !== undefined ? String(ownerPhone).trim() || null : undefined,
+          document: ownerDocument !== undefined ? String(ownerDocument).trim() || null : undefined
         }
       })
     ]);
@@ -140,7 +146,9 @@ export const updateConfiguracion = async (req: Request, res: Response): Promise<
       notifyTicketCreado: updated.notifyTicketCreado,
       ownerFirstName: updatedOwner.firstName || '',
       ownerLastName: updatedOwner.lastName || '',
-      ownerEmail: updatedOwner.email || ''
+      ownerEmail: updatedOwner.email || '',
+      ownerPhone: updatedOwner.phone || '',
+      ownerDocument: updatedOwner.document || ''
     });
   } catch (error) {
     console.error('Error en updateConfiguracion:', error);
