@@ -20,7 +20,8 @@ import {
   Wrench,
   Layers,
   MessageCircle,
-  User
+  User,
+  ChevronDown
 } from 'lucide-react';
 import logoImg from '../../../assets/logo.png';
 
@@ -53,6 +54,7 @@ export const DashboardLayout: React.FC = () => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
   const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications();
   const { unreadCount: unreadMensajesCount } = useUnreadMensajesCount();
 
@@ -292,22 +294,40 @@ export const DashboardLayout: React.FC = () => {
                 </>
               )}
             </div>
-            <button
-              onClick={() => navigate(`/${tenant?.slug}/perfil`)}
-              className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100"
-              title="Mi Perfil"
-            >
-              <User className="w-5 h-5" />
-            </button>
-            {user?.role !== 'INQUILINO' && (
+            <div className="relative">
               <button
-                onClick={() => navigate(`/${tenant?.slug}/configuracion`)}
-                className="p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100"
-                title="Configuración"
+                onClick={() => setShowAccountMenu(!showAccountMenu)}
+                className={`flex items-center gap-1 p-1.5 rounded-lg hover:bg-muted hover:text-foreground active:scale-95 transition-all duration-100 ${showAccountMenu ? 'bg-muted text-foreground' : ''}`}
+                title="Mi cuenta"
               >
-                <Settings className="w-5 h-5" />
+                <User className="w-5 h-5" />
+                <ChevronDown className="w-3.5 h-3.5" />
               </button>
-            )}
+
+              {showAccountMenu && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setShowAccountMenu(false)} />
+                  <div className="absolute right-0 mt-3 w-56 bg-card border border-border rounded-2xl shadow-xl z-45 p-2 space-y-1 animate-modal-in">
+                    <button
+                      onClick={() => { navigate(`/${tenant?.slug}/perfil`); setShowAccountMenu(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-muted transition-colors text-left"
+                    >
+                      <User className="w-4 h-4 text-muted-foreground" />
+                      Mi Perfil
+                    </button>
+                    {user?.role !== 'INQUILINO' && (
+                      <button
+                        onClick={() => { navigate(`/${tenant?.slug}/configuracion`); setShowAccountMenu(false); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-foreground hover:bg-muted transition-colors text-left"
+                      >
+                        <Settings className="w-4 h-4 text-muted-foreground" />
+                        Configuración del negocio
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <button 
               onClick={handleLogout}
               className="p-1.5 rounded-lg text-muted-foreground hover:bg-red-500/10 hover:text-red-600 active:scale-95 transition-all duration-100"
