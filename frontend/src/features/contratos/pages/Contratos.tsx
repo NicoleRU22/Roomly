@@ -202,6 +202,12 @@ export const Contratos: React.FC = () => {
     return import.meta.env.VITE_API_URL || 'http://localhost:3001';
   };
 
+  const getImageUrl = (path?: string) => {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+    return `${getApiUrl()}${path}`;
+  };
+
   const fetchContratosAndProperties = async () => {
     setLoading(true);
     setError(null);
@@ -596,7 +602,7 @@ export const Contratos: React.FC = () => {
               <div className="h-16 flex items-center justify-center border-b border-dashed border-slate-300">
                 {!isDraft && myContract.signatureUrl ? (
                   <img 
-                    src={`${getApiUrl()}${myContract.signatureUrl}`} 
+                    src={getImageUrl(myContract.signatureUrl)}
                     alt="Firma Inquilino" 
                     className="h-full object-contain max-w-[150px]"
                   />
@@ -1000,7 +1006,7 @@ export const Contratos: React.FC = () => {
                     <div className="h-12 flex items-center justify-center border-b border-dashed border-slate-300">
                       {selectedContract.signatureUrl ? (
                         <img 
-                          src={`${getApiUrl()}${selectedContract.signatureUrl}`} 
+                          src={getImageUrl(selectedContract.signatureUrl)} 
                           alt="Firma Inquilino" 
                           className="h-full object-contain max-w-[120px]"
                         />

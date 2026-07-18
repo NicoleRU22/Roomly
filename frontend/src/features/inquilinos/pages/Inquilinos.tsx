@@ -159,6 +159,12 @@ export const Inquilinos: React.FC = () => {
     return import.meta.env.VITE_API_URL || 'http://localhost:3001';
   };
 
+  const getImageUrl = (path?: string) => {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+    return `${getApiUrl()}${path}`;
+  };
+
   const handleBuscarDni = async (dniVal?: string) => {
     const targetDni = dniVal || documentVal;
     if (targetDni.length !== 8) return;
@@ -908,7 +914,7 @@ export const Inquilinos: React.FC = () => {
                     <div className="h-10 flex items-center justify-center border-b border-dashed">
                       {viewingContract.signatureUrl ? (
                         <img 
-                          src={`${getApiUrl()}${viewingContract.signatureUrl}`} 
+                          src={getImageUrl(viewingContract.signatureUrl)}
                           alt="Firma" 
                           className="h-full object-contain"
                         />

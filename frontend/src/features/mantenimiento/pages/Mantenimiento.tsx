@@ -369,7 +369,7 @@ export const Mantenimiento: React.FC = () => {
                           <span className="font-bold text-slate-900">{ticket.title}</span>
                           {ticket.imageUrl && (
                             <a 
-                              href={`${api.defaults.baseURL?.replace('/api', '')}${ticket.imageUrl}`} 
+                              href={ticket.imageUrl.startsWith('http') ? ticket.imageUrl : `${api.defaults.baseURL?.replace('/api', '')}${ticket.imageUrl}`}
                               target="_blank" 
                               rel="noreferrer" 
                               className="text-purple-600 hover:text-purple-700"
